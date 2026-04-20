@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card team-hero-card {% if portfolio['service_track'] == 'web_html' %}web-hero-accent{% endif %}">
+  <div class="team-hero-inner">
+    <div class="team-logo-wrap large">
+      {% if portfolio['logo_stored_filename'] %}
+        <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=portfolio['logo_stored_filename']) }}" alt="Logo de {{ portfolio['team_name'] }}">
+      {% elif gallery and gallery[0]['stored_filename'] %}
+        <img class="team-logo-img" src="{{ url_for('team_gallery_file', stored_filename=gallery[0]['stored_filename']) }}" alt="Vista de {{ portfolio['team_name'] }}">
+      {% else %}
+        <div class="team-logo-placeholder">{{ portfolio['team_name'][:2]|upper }}</div>
+      {% endif %}
+    </div>
+    <div>
+      <div class="chip-row">
+        <span class="badge">{{ service_track_options.get(portfolio['service_track'], portfolio['service_track']) }}</span>
+        <span class="badge">{{ portfolio_service_category_options.get(portfolio['service_category'], portfolio['service_category']) }}</span>
+        {% if active_cycle %}<span class="badge">{{ active_cycle['name'] }}</span>{% endif %}
+      </div>
+      <h1>{{ portfolio['title'] }}</h1>
+      <p class="muted"><strong>{{ portfolio['team_name'] }}</strong></p>
+      <p>{{ portfolio['description'] or portfolio['profile_blurb'] or 'El equipo todavía no cargó una explicación detallada.' }}</p>
+      {% if portfolio['service_track'] == 'web_html' %}<p class="muted">Este perfil está pensado como una muestra web: una propuesta breve, visual y clara para que otros equipos entiendan rápido qué tipo de página podrían pedir.</p>{% endif %}
+      <div class="button-row wrap top-gap">
+        <a class="btn-link secondary" href="{{ url_for('marketplace') }}">Volver al mercado</a>
+        {% if current_user and current_user['role'] == 'robotica_team' %}
+          <a class="btn-link secondary" href="{{ url_for('robotics_portfolio_detail', portfolio_id=portfolio['id']) }}">Ficha completa de contratación</a>
+        {% endif %}
+        {% if current_user and current_user['role'] == 'desarrollo_team' and current_user['team_id'] == portfolio['team_id'] %}
+          <a class="btn-link secondary" href="{{ url_for('development_edit_portfolio', portfolio_id=portfolio['id']) }}">Editar portfolio</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <h2>{% if portfolio['service_track'] == 'web_html' %}Resumen de la propuesta web{% else %}Resumen del servicio{% endif %}</h2>
+    <div class="kv-list">
+      <div><strong>Equipo</strong><br><span class="muted">{{ portfolio['team_name'] }}</span></div>
+      <div><strong>Línea</strong><br><span class="muted">{{ service_track_options.get(portfolio['service_track'], portfolio['service_track']) }}</span></div>
+      <div><strong>Categoría</strong><br><span class="muted">{{ portfolio_service_category_options.get(portfolio['service_category'], portfolio['service_category']) }}</span></div>
+      <div><strong>{% if portfolio['service_track'] == 'web_html' %}Qué resuelve o muestra{% else %}Fortalezas{% endif %}</strong><br><span class="muted">{{ portfolio['skills'] or 'Sin fortalezas cargadas.' }}</span></div>
+      <div><strong>Herramientas</strong><br><span class="muted">{{ portfolio['tools'] or 'Sin herramientas cargadas.' }}</span></div>
+      <div><strong>{% if portfolio['service_track'] == 'web_html' %}Cómo construyen la página{% else %}Forma de trabajo{% endif %}</strong><br><span class="muted">{{ portfolio['work_style'] or 'Sin explicación cargada.' }}</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Contratación y uso</h2>
+    {% if current_user and current_user['role'] in ['robotica_team', 'desarrollo_team'] %}
+      {% if current_user['team_id'] == portfolio['team_id'] %}
+        <p class="muted">Este es el portfolio de tu propio equipo. Desde acá podés revisarlo, pero no contratarlo.</p>
+      {% elif contract_request_allowed %}
+        <p>Tu equipo puede solicitar este trabajo directamente desde el mercado.</p>
+        <div class="chip-row top-gap">
+          <span class="badge">Cliente: {{ current_user['role'] }}</span>
+          <span class="badge">Proveedor: {{ service_track_options.get(portfolio['service_track'], portfolio['service_track']) }}</span>
+          <span class="badge">Producto: {{ portfolio_service_category_options.get(portfolio['service_category'], portfolio['service_category']) }}</span>
+        </div>
+        <div class="chip-row top-gap">
+          <span class="badge">Saldo actual: {{ contract_request_wallet['balance'] if contract_request_wallet else 0 }} JeroCoin</span>
+          <span class="badge">Contratos abiertos: {{ contract_request_open_contracts }}/{{ contract_request_limit }}</span>
+          <span class="badge">Reserva: {{ contract_request_price }} JeroCoin</span>
+        </div>
+        <form method="post" action="{{ url_for('request_market_contract') }}" class="form-grid top-gap" enctype="multipart/form-data">
+          <input type="hidden" name="portfolio_id" value="{{ portfolio['id'] }}">
+          <input type="hidden" name="next" value="{{ url_for(contract_request_dashboard_endpoint) }}">
+          <label>Fecha esperada de entrega
+            <input type="date" name="requested_delivery_date" required>
+          </label>
+          <label>Pedido o briefing
+            <textarea name="request_message" rows="5" placeholder="Explicá con claridad qué espera tu equipo de este trabajo."></textarea>
+          </label>
+          <label>Archivo de referencia
+            <input type="file" name="request_file" accept=".py,.txt,.md,.json,.csv,.zip,.rar,.7z,.ino,.c,.cpp,.h,.java,.js,.ts">
+          </label>
+          <button type="submit" onclick="return confirm('¿Seguro que quieren reservar este contrato desde el mercado?');">Solicitar contrato</button>
+        </form>
+      {% else %}
+        <div class="warning-box">{{ contract_request_note or 'Tu equipo no puede contratar este portfolio desde esta vista.' }}</div>
+      {% endif %}
+    {% else %}
+      <p class="muted">Esta ficha es pública dentro del sistema para que cualquier rol pueda entender qué ofrece este equipo y cómo se presenta en el mercado.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>{% if portfolio['service_track'] == 'web_html' %}Galería y ejemplos visuales{% else %}Galería del equipo{% endif %}</h2>
+  <div class="gallery-grid">
+    {% for item in gallery %}
+      <div class="gallery-card public">
+        <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+        <div class="gallery-caption">{{ item['caption'] or 'Trabajo del equipo' }}</div>
+      </div>
+    {% else %}
+      <p class="muted">{% if portfolio['service_track'] == 'web_html' %}Este equipo web todavía no cargó capturas o ejemplos. Cuando sumen imágenes, esta parte va a funcionar como mini muestra del servicio.{% else %}Este equipo todavía no cargó imágenes de trabajos para el mercado.{% endif %}</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

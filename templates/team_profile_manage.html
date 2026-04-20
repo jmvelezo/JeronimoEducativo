@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Mi equipo · {{ team['name'] }}</h1>
+    <p class="muted">Acá pueden personalizar cómo se ve su equipo dentro de JeroCoin: logo, presentación corta y una pequeña galería de trabajos.</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('dashboard') }}">Volver al panel</a>
+    <a class="btn-link secondary" href="{{ url_for('team_rules_page') }}">Ver reglas</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card team-hero-card">
+    <div class="team-hero-inner">
+      <div class="team-logo-wrap large">
+        {% if team['logo_stored_filename'] %}
+          <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+        {% else %}
+          <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
+        {% endif %}
+      </div>
+      <div>
+        <span class="badge">{{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</span>
+        <h2>{{ team['name'] }}</h2>
+        <p>{{ team['profile_blurb'] or 'Todavía no cargaron una presentación breve del equipo.' }}</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Editar perfil visual</h2>
+    <form method="post" action="{{ url_for('update_team_profile') }}" enctype="multipart/form-data" class="form-grid">
+      <label>Presentación breve del equipo
+        <textarea name="profile_blurb" rows="4" placeholder="Ej: somos un equipo que prueba, corrige y explica cada avance con calma.">{{ team['profile_blurb'] or '' }}</textarea>
+      </label>
+      <label>Logo del equipo
+        <input type="file" name="team_logo" accept=".png,.jpg,.jpeg,.webp,.gif">
+      </label>
+      <p class="muted">Si no suben un logo, el sistema usa un marcador simple con el nombre del equipo.</p>
+      <button type="submit">Guardar perfil</button>
+    </form>
+  </section>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <div class="section-header">
+      <div>
+        <h2>Galería del equipo</h2>
+        <p class="muted">Suban imágenes chiquitas de avances, robots, pruebas o trabajos terminados.</p>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('add_team_gallery_item') }}" enctype="multipart/form-data" class="form-grid inline-form">
+      <label>Imagen
+        <input type="file" name="gallery_image" accept=".png,.jpg,.jpeg,.webp,.gif" required>
+      </label>
+      <label>Texto corto
+        <input type="text" name="caption" placeholder="Ej: prueba de movimiento, maqueta, primer armado">
+      </label>
+      <button type="submit">Agregar a galería</button>
+    </form>
+
+    <div class="gallery-grid top-gap">
+      {% for item in gallery %}
+        <article class="gallery-card">
+          <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+          <div class="gallery-card-body">
+            <strong>{{ item['caption'] or 'Sin texto' }}</strong>
+            <form method="post" action="{{ url_for('delete_team_gallery_item', item_id=item['id']) }}" onsubmit="return confirm('¿Seguro que quieren quitar esta imagen de la galería?');">
+              <button type="submit" class="danger-btn soft">Quitar</button>
+            </form>
+          </div>
+        </article>
+      {% else %}
+        <p class="muted">Todavía no hay imágenes cargadas.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Integrantes del equipo</h2>
+    <p class="muted">Estos datos se ven para ustedes. Entre equipos no se muestran los integrantes.</p>
+    <div class="roster-list">
+      {% for member in members %}
+        <div class="roster-item">
+          <div>
+            <strong>{{ member['full_name'] }}</strong>
+            <div class="muted">{{ member['course'] }}</div>
+          </div>
+          <span class="badge">{{ member['internal_role'] }}</span>
+        </div>
+      {% else %}
+        <p class="muted">Todavía no hay integrantes cargados.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>{% if portfolio %}Editar portfolio{% else %}Nuevo portfolio{% endif %}</h1>
+    <p class="muted">{% if team['service_track'] == 'web_html' %}Esta página está pensada para armar propuestas web simples: una oferta clara, visual y fácil de entender para cualquiera que entre al mercado.{% else %}Esta página es la vista de creación y edición. Lo que carguen acá es lo que después verá el equipo de robótica.{% endif %}</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('development_dashboard') }}">Volver al panel</a>
+    <a class="btn-link secondary" href="{{ url_for('team_profile_manage') }}">Editar mi equipo</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card team-hero-card {% if team['service_track'] == 'web_html' %}web-hero-accent{% endif %}">
+    <div class="team-hero-inner">
+      <div class="team-logo-wrap large">
+        {% if team['logo_stored_filename'] %}
+          <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+        {% else %}
+          <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
+        {% endif %}
+      </div>
+      <div>
+        <span class="badge">{% if team['service_track'] == 'web_html' %}equipo web / HTML{% else %}equipo desarrollador{% endif %}</span>
+        <span class="badge">{{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</span>
+        <h2>{{ team['name'] }}</h2>
+        <p>{{ team['profile_blurb'] or ('Todavía no cargaron una presentación del equipo. Pueden hacerlo desde “Editar mi equipo”.' if team['service_track'] != 'web_html' else 'Todavía no cargaron una presentación del equipo web. Pueden hacerlo desde “Editar mi equipo” para que el portfolio se vea más sólido.') }}</p>
+      </div>
+    </div>
+    {% if gallery %}
+      <div class="gallery-strip top-gap">
+        {% for item in gallery %}
+          <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>{% if portfolio %}Datos del portfolio{% else %}Crear portfolio{% endif %}</h2>
+    <form method="post" action="{% if portfolio %}{{ url_for('update_portfolio', portfolio_id=portfolio['id']) }}{% else %}{{ url_for('create_portfolio') }}{% endif %}" class="form-grid">
+      <label>Título
+        <input type="text" name="title" value="{{ portfolio['title'] if portfolio else '' }}" required placeholder="{% if team['service_track'] == 'web_html' %}Ej: Landing para equipo de robótica{% else %}Ej: Automatización para robot seguidor{% endif %}">
+      </label>
+      <label>Descripción breve
+        <textarea name="description" rows="4" placeholder="{% if team['service_track'] == 'web_html' %}Resumen corto de la página o experiencia web que ofrecen.{% else %}Resumen corto para que lo vean primero los equipos de robótica.{% endif %}">{{ portfolio['description'] if portfolio else '' }}</textarea>
+      </label>
+      <label>Fortalezas y habilidades
+        <textarea name="skills" rows="4" placeholder="{% if team['service_track'] == 'web_html' %}Ej: estructura de páginas, diseño limpio, secciones visuales, accesibilidad básica.{% else %}Ej: sensores, movimientos básicos, corrección de errores, pruebas.{% endif %}">{{ portfolio['skills'] if portfolio else '' }}</textarea>
+      </label>
+      <label>Herramientas o lenguajes
+        <input type="text" name="tools" value="{{ portfolio['tools'] if portfolio else '' }}" placeholder="{% if team['service_track'] == 'web_html' %}Ej: HTML, CSS, diseño responsive, edición de imágenes{% else %}Ej: Python, Arduino IDE, lógica secuencial{% endif %}">
+      </label>
+      <label>Forma de trabajo
+        <textarea name="work_style" rows="4" placeholder="{% if team['service_track'] == 'web_html' %}Ej: boceto rápido, maqueta visual, revisión de secciones y ajustes antes de publicar.{% else %}Ej: trabajamos con pruebas cortas, entregas por etapas y explicación final.{% endif %}">{{ portfolio['work_style'] if portfolio else '' }}</textarea>
+      </label>
+      {% if portfolio %}
+        <label>Estado
+          <select name="status">
+            <option value="draft" {% if portfolio['status'] == 'draft' %}selected{% endif %}>draft</option>
+            <option value="published" {% if portfolio['status'] == 'published' %}selected{% endif %}>published</option>
+            <option value="archived" {% if portfolio['status'] == 'archived' %}selected{% endif %}>archived</option>
+          </select>
+        </label>
+      {% endif %}
+      <button type="submit">{% if portfolio %}Guardar cambios{% else %}Publicar portfolio{% endif %}</button>
+    </form>
+
+    {% if portfolio %}
+      <div class="button-row wrap top-gap">
+        <form method="post" action="{{ url_for('delete_portfolio', portfolio_id=portfolio['id']) }}" onsubmit="return confirm('¿Seguro que quieren eliminar o archivar este portfolio?');">
+          <button type="submit" class="danger-btn soft">Eliminar / archivar</button>
+        </form>
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

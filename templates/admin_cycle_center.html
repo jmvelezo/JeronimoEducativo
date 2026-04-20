@@ -1,0 +1,353 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Centro de ciclos</h1>
+    <p class="muted">Acá configurás qué equipos participan, revisás el estado del ciclo y ejecutás el cobro final. La lógica ahora es: primero se arma el ciclo en borrador, después se inicia y recién ahí se opera.</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('admin_dashboard') }}">Volver al panel</a>
+    <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Equipos</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Estado actual</h2>
+    {% if current_cycle %}
+      <div class="kv-list">
+        <div><strong>ID:</strong> {{ current_cycle['id'] }}</div>
+        <div><strong>Nombre:</strong> {{ current_cycle['name'] }}</div>
+        <div><strong>Inicio:</strong> {{ current_cycle['start_date'] or '—' }}</div>
+        <div><strong>Fin estimado:</strong> {{ current_cycle['end_date'] or '—' }}</div>
+        <div><strong>Estado:</strong> <span class="badge">{{ cycle_state }}</span></div>
+        <div><strong>Detalle:</strong> <a href="{{ url_for('admin_cycle_detail', cycle_id=current_cycle['id']) }}">abrir ciclo</a></div>
+      </div>
+      {% if cycle_state == 'borrador' %}
+        <hr class="divider">
+        <p class="muted">Este ciclo todavía no empezó. Mientras siga en borrador podés agregar o quitar equipos y revisar la configuración.</p>
+      {% elif cycle_state == 'activo' %}
+        <hr class="divider">
+        <p class="muted">Este ciclo ya está operativo. Los contratos, las recompensas y los cobros se limitan a los equipos implicados acá.</p>
+        {% if cycle_run %}
+          <p><strong>Este ciclo ya fue liquidado.</strong></p>
+          <p class="muted">Se ejecutó el {{ cycle_run['executed_at'] }} por {{ cycle_run['executed_by_username'] or 'sistema' }}.</p>
+        {% else %}
+          <p class="muted">Todavía no se ejecutó el cierre económico de este ciclo.</p>
+        {% endif %}
+      {% endif %}
+    {% else %}
+      <p class="muted">No hay ciclo abierto. Primero armás los equipos, después creás el ciclo y recién al final lo iniciás.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Reglas económicas vigentes</h2>
+    {% if settings %}
+      <div class="kv-list">
+        <div><strong>Tesorería actual:</strong> {{ treasury['balance'] if treasury else '—' }} JeroCoin</div>
+        <div><strong>Costo base por equipo:</strong> {{ settings['base_cost'] }}</div>
+        <div><strong>Costo por integrante activo:</strong> {{ settings['cost_per_member'] }}</div>
+        <div><strong>Sobrecosto por 2 proyectos activos:</strong> {{ settings['second_project_surcharge'] }}</div>
+        <div><strong>Precio base por contrato:</strong> {{ settings['contract_price'] }}</div>
+      </div>
+      <hr class="divider">
+      <p class="muted">Al ejecutar el ciclo, el sistema cobra: <strong>costo base + (integrantes activos × costo por integrante) + sobrecosto si el equipo tiene 2 o más proyectos activos</strong>. Además, podés sumar cargos específicos antes del cierre.</p>
+    {% else %}
+      <p class="muted">No hay configuración económica activa.</p>
+    {% endif %}
+  </section>
+</div>
+
+{% if not current_cycle %}
+<section class="card">
+  <h2>Crear nuevo ciclo en borrador</h2>
+  <p class="muted">Seleccioná desde el inicio qué equipos van a participar. El ciclo se guarda en borrador y recién después lo iniciás.</p>
+  <form method="post" action="{{ url_for('admin_create_cycle') }}" class="form-grid">
+    <div class="grid two compact-grid">
+      <label>Nombre del ciclo
+        <input type="text" name="name" required placeholder="Ej. Ciclo 1 - Mayo">
+      </label>
+      <label>Fecha de inicio estimada
+        <input type="date" name="start_date">
+      </label>
+    </div>
+    <label>Fecha de cierre estimada
+      <input type="date" name="end_date">
+    </label>
+    <div class="grid two">
+      <div>
+        <h3>Equipos de robótica</h3>
+        <div class="check-list">
+          {% for team in creatable_robotics %}
+            <label class="choice-row"><input type="checkbox" name="team_ids" value="{{ team['id'] }}"> <span>{{ team['name'] }}</span></label>
+          {% else %}
+            <p class="muted">No hay equipos de robótica activos.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <h3>Equipos de desarrollo</h3>
+        <div class="check-list">
+          {% for team in creatable_development %}
+            <label class="choice-row"><input type="checkbox" name="team_ids" value="{{ team['id'] }}"> <span>{{ team['name'] }}</span></label>
+          {% else %}
+            <p class="muted">No hay equipos de desarrollo activos.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <button type="submit">Crear ciclo en borrador</button>
+  </form>
+</section>
+{% endif %}
+
+{% if current_cycle %}
+<div class="grid two">
+  <section class="card">
+    <h2>Equipos implicados</h2>
+    <p class="muted">Estos son los equipos formalmente vinculados al ciclo actual. Mientras esté en borrador podés editar esta lista. Cuando el ciclo se inicia, queda fijada.</p>
+
+    <div class="subsection">
+      <h3>Robótica</h3>
+      <div class="roster-list">
+        {% for team in participant_groups['robotica'] %}
+          <div class="roster-item stack-on-mobile">
+            <div>
+              <strong>{{ team['name'] }}</strong>
+              <div class="muted">Integrantes: {{ team['member_count'] }} · Saldo: {{ team['wallet_balance'] }} JeroCoin</div>
+            </div>
+            {% if draft_cycle %}
+              <form method="post" action="{{ url_for('admin_remove_cycle_team', cycle_id=current_cycle['id'], team_id=team['id']) }}">
+                <button type="submit" class="secondary-btn">Quitar</button>
+              </form>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="muted">Todavía no hay equipos de robótica vinculados.</p>
+        {% endfor %}
+      </div>
+      {% if draft_cycle %}
+        <form method="post" action="{{ url_for('admin_add_cycle_team', cycle_id=current_cycle['id']) }}" class="inline-form form-grid compact-grid mt-8">
+          <label>Agregar equipo de robótica
+            <select name="team_id">
+              {% for team in available_robotics %}
+                <option value="{{ team['id'] }}">{{ team['name'] }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="submit" {% if not available_robotics %}disabled{% endif %}>Agregar</button>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="subsection">
+      <h3>Desarrollo</h3>
+      <div class="roster-list">
+        {% for team in participant_groups['desarrollo'] %}
+          <div class="roster-item stack-on-mobile">
+            <div>
+              <strong>{{ team['name'] }}</strong>
+              <div class="muted">Integrantes: {{ team['member_count'] }} · Saldo: {{ team['wallet_balance'] }} JeroCoin · Máx. contratos: {{ team['max_contracts'] }}</div>
+            </div>
+            {% if draft_cycle %}
+              <form method="post" action="{{ url_for('admin_remove_cycle_team', cycle_id=current_cycle['id'], team_id=team['id']) }}">
+                <button type="submit" class="secondary-btn">Quitar</button>
+              </form>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="muted">Todavía no hay equipos de desarrollo vinculados.</p>
+        {% endfor %}
+      </div>
+      {% if draft_cycle %}
+        <form method="post" action="{{ url_for('admin_add_cycle_team', cycle_id=current_cycle['id']) }}" class="inline-form form-grid compact-grid mt-8">
+          <label>Agregar equipo de desarrollo
+            <select name="team_id">
+              {% for team in available_development %}
+                <option value="{{ team['id'] }}">{{ team['name'] }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="submit" {% if not available_development %}disabled{% endif %}>Agregar</button>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    {% if draft_cycle %}
+      <h2>Iniciar este ciclo</h2>
+      <p class="muted">Cuando lo inicies, esta selección de equipos queda congelada para el ciclo. Desde ese momento ya podrán operar contratos, entregas y recompensas solo entre los equipos implicados.</p>
+      <form method="post" action="{{ url_for('admin_start_cycle', cycle_id=current_cycle['id']) }}" class="form-grid">
+        <button type="submit">Iniciar ciclo ahora</button>
+      </form>
+      <hr class="divider">
+      <h3>Borrar borrador</h3>
+      <p class="muted">Como todavía no empezó, este borrador sí se puede eliminar completo.</p>
+      <form method="post" action="{{ url_for('admin_delete_cycle', cycle_id=current_cycle['id']) }}">
+        <button type="submit" class="danger-btn">Borrar borrador</button>
+      </form>
+    {% else %}
+      <h2>Resumen operativo del ciclo activo</h2>
+      <p class="muted">Mientras el ciclo esté activo no se pueden agregar ni quitar equipos. El siguiente ajuste estructural se hace cuando este ciclo termine y armes el próximo.</p>
+      <div class="kv-list compact">
+        <div><strong>Equipos de robótica:</strong> {{ participant_groups['robotica']|length }}</div>
+        <div><strong>Equipos de desarrollo:</strong> {{ participant_groups['desarrollo']|length }}</div>
+        <div><strong>Cargos pendientes:</strong> {{ pending_charges|length }}</div>
+        <div><strong>Entregas/cobros del ciclo:</strong> se calculan solo sobre los equipos implicados arriba.</div>
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endif %}
+
+{% if active_cycle %}
+<div class="grid two">
+  <section class="card">
+    <h2>Proyección por equipo de desarrollo</h2>
+    <div class="table-wrap">
+      <table class="compact-table min-cycle-table">
+        <tr>
+          <th>Equipo</th><th>Saldo actual</th><th>Integrantes activos</th><th>Proyectos activos</th><th>Mantenimiento</th><th>Extra pendiente</th><th>Total proyectado</th>
+        </tr>
+        {% for row in development_rows %}
+          <tr>
+            <td>{{ row['name'] }} {% if not row['active'] %}<span class="badge">inactivo</span>{% endif %}</td>
+            <td>{{ row['wallet_balance'] }}</td>
+            <td>{{ row['member_count'] }}</td>
+            <td>{{ row['active_projects'] }}</td>
+            <td>{{ row['maintenance_amount'] }}</td>
+            <td>{{ row['pending_extra'] }}</td>
+            <td><strong>{{ row['projected_total'] }}</strong></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7">No hay equipos de desarrollo implicados en este ciclo.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Agregar cargo específico a este ciclo</h2>
+    {% if cycle_run %}
+      <p class="muted">Como el ciclo ya fue ejecutado, no se pueden sumar más cargos pendientes.</p>
+    {% else %}
+      <form method="post" action="{{ url_for('admin_add_cycle_charge') }}" class="form-grid">
+        <label>Equipo de desarrollo implicado
+          <select name="team_id">
+            {% for team in participant_groups['desarrollo'] if team['active'] %}
+              <option value="{{ team['id'] }}">{{ team['name'] }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Monto
+          <input type="number" name="amount" min="1" required>
+        </label>
+        <label>Motivo del cobro
+          <input type="text" name="reason" required placeholder="Ej. consumo extra de materiales, penalización, corrección especial">
+        </label>
+        <button type="submit">Agregar cargo pendiente</button>
+      </form>
+    {% endif %}
+
+    <hr class="divider">
+    <h3>Cargos pendientes</h3>
+    {% for charge in pending_charges %}
+      <div class="delivery-card">
+        <div class="delivery-meta">
+          <strong>{{ charge['team_name'] }}</strong>
+          <span class="badge">{{ charge['amount'] }} JeroCoin</span>
+        </div>
+        <p>{{ charge['reason'] }}</p>
+        {% if not cycle_run %}
+          <form method="post" action="{{ url_for('admin_cancel_cycle_charge', charge_id=charge['id']) }}">
+            <button type="submit" class="secondary-btn">Cancelar cargo</button>
+          </form>
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="muted">No hay cargos pendientes para este ciclo.</p>
+    {% endfor %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Ejecutar y cerrar ciclo</h2>
+  {% if cycle_run %}
+    <p class="muted">Este ciclo ya fue liquidado y quedó finalizado.</p>
+  {% else %}
+    <p class="muted">Al ejecutar, el sistema cobrará automáticamente el mantenimiento de todos los equipos de desarrollo implicados y además aplicará los cargos específicos pendientes. Luego el ciclo quedará finalizado.</p>
+    <form method="post" action="{{ url_for('admin_execute_cycle') }}" class="form-grid">
+      <label>Notas del cierre
+        <textarea name="notes" rows="3" placeholder="Opcional: resumen breve del cierre o aclaraciones del período."></textarea>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" name="create_next_draft" id="create_next_draft"> Cerrar este ciclo y dejar preparado un nuevo borrador
+      </label>
+      <div class="grid two compact-grid">
+        <label>Nombre del siguiente ciclo
+          <input type="text" name="next_cycle_name" placeholder="Ej. Ciclo 2 - Junio">
+        </label>
+        <label>Inicio estimado del siguiente ciclo
+          <input type="date" name="next_cycle_start">
+        </label>
+      </div>
+      <label>Fin estimado del siguiente ciclo
+        <input type="date" name="next_cycle_end">
+      </label>
+      <button type="submit">Ejecutar y cerrar ciclo</button>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Historial de ciclos cerrados</h2>
+  <div class="table-wrap">
+    <table class="compact-table">
+      <tr><th>Ciclo</th><th>Estado</th><th>Equipos activos aún vinculados</th><th>Liquidaciones</th><th>Acciones</th></tr>
+      {% for cycle in closed_cycles %}
+        <tr>
+          <td><a href="{{ url_for('admin_cycle_detail', cycle_id=cycle['id']) }}">{{ cycle['name'] }}</a></td>
+          <td><span class="badge">finalizado</span></td>
+          <td>{{ cycle['active_linked_team_count'] }}</td>
+          <td>{{ cycle['run_count'] }}</td>
+          <td>
+            <a class="btn-link secondary" href="{{ url_for('admin_cycle_detail', cycle_id=cycle['id']) }}">Ver detalle</a>
+            {% if cycle['active_linked_team_count'] == 0 %}
+              <form method="post" action="{{ url_for('admin_delete_cycle', cycle_id=cycle['id']) }}">
+                <button type="submit" class="secondary-btn">Borrar</button>
+              </form>
+            {% else %}
+              <span class="muted">Esperando que esos equipos ya no estén activos</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5">Todavía no hay ciclos cerrados.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Historial de ejecuciones</h2>
+  <div class="table-wrap">
+    <table class="compact-table">
+      <tr><th>Ciclo</th><th>Fecha</th><th>Mantenimiento</th><th>Cargos extra</th><th>Ejecutado por</th></tr>
+      {% for run in previous_runs %}
+        <tr>
+          <td><a href="{{ url_for('admin_cycle_detail', cycle_id=run['cycle_id']) }}">{{ run['cycle_name'] }}</a></td>
+          <td>{{ run['executed_at'] }}</td>
+          <td>{{ run['maintenance_total'] }}</td>
+          <td>{{ run['custom_total'] }}</td>
+          <td>{{ run['executed_by_username'] or 'sistema' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5">Todavía no hay ciclos ejecutados.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</section>
+{% endblock %}

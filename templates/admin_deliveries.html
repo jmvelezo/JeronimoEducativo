@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Historial de entregas</h1>
+    <p class="muted">Acá ves todas las entregas cargadas por los equipos, con su archivo, código pegado y link si existe.</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('admin_dashboard') }}">Volver al panel</a>
+    <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Gestión de equipos</a>
+  </div>
+</div>
+
+
+<section class="card">
+  <h2>Gestión de historial</h2>
+  {% if can_purge_history %}
+    <div class="warning-box">
+      El sistema ya no tiene equipos, estudiantes, cuentas de equipos ni interventores. Si querés, podés borrar el historial completo para dejar limpia esta parte administrativa.
+    </div>
+    <form method="post" action="{{ url_for('admin_purge_history') }}" class="top-gap" onsubmit="return confirm('¿Seguro que querés borrar todo el historial? Esta acción elimina contratos, entregas, revisiones, movimientos, ciclos y archivos asociados.');">
+      <button type="submit" class="danger-btn">Borrar historial completo</button>
+    </form>
+  {% else %}
+    <div class="warning-box">
+      Para borrar el historial completo, el sistema tiene que quedar vacío.
+      <ul>
+        <li>Equipos en el sistema: <strong>{{ purge_blockers['teams'] }}</strong></li>
+        <li>Estudiantes en el sistema: <strong>{{ purge_blockers['students'] }}</strong></li>
+        <li>Interventores en el sistema: <strong>{{ purge_blockers['interventors'] }}</strong></li>
+        <li>Cuentas de equipos en el sistema: <strong>{{ purge_blockers['team_users'] }}</strong></li>
+      </ul>
+    </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <table>
+    <tr>
+      <th>Entrega</th>
+      <th>Contrato</th>
+      <th>Equipo proveedor</th>
+      <th>Contenido</th>
+      <th>Estado</th>
+      <th>Acción</th>
+    </tr>
+    {% for delivery in deliveries %}
+      <tr>
+        <td>#{{ delivery['id'] }}</td>
+        <td>#{{ delivery['contract_id'] }} · {{ delivery['client_name'] or delivery['robotics_name'] }}</td>
+        <td>{{ delivery['provider_name'] or delivery['development_name'] }}<br><span class="muted">{{ delivery['submitted_by'] }}</span></td>
+        <td>
+          <div class="chip-row">
+            {% if delivery['has_code'] %}<span class="badge">código</span>{% endif %}
+            {% if delivery['has_link'] %}<span class="badge">link</span>{% endif %}
+            {% if delivery['has_file'] %}<span class="badge">archivo</span>{% endif %}
+          </div>
+        </td>
+        <td>{{ delivery['status'] }}</td>
+        <td><a href="{{ url_for('admin_delivery_detail', delivery_id=delivery['id']) }}">abrir</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6">Todavía no hay entregas registradas.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

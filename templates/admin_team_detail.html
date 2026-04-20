@@ -1,0 +1,294 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>{{ team['name'] }}</h1>
+    <p class="muted">{{ team['course_label'] or 'Sin curso' }} · {{ market_role_options.get(team['market_role'] or 'both', team['market_role'] or 'both') }} · {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }} · saldo {{ team['wallet_balance'] }} JeroCoin · login {{ team['login_username'] or 'sin login' }}</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Volver a equipos</a>
+    {% if current_user['role'] == 'admin' %}
+      <a class="btn-link secondary" href="{{ url_for('admin_dashboard') }}">Panel admin</a>
+    {% else %}
+      <a class="btn-link secondary" href="{{ url_for('interventor_dashboard') }}">Panel interventor</a>
+    {% endif %}
+    <a class="btn-link secondary" href="{{ url_for('admin_cycle_center') }}">Ciclos</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Configuración del equipo</h2>
+    {% if current_user['role'] == 'admin' %}
+    <form method="post" action="{{ url_for('admin_update_team', team_id=team['id']) }}" class="form-grid">
+      <input type="hidden" name="next" value="{{ url_for('admin_team_detail', team_id=team['id']) }}">
+      <label>Nombre
+        <input type="text" name="name" value="{{ team['name'] }}" required>
+      </label>
+      <label>Curso visible del equipo
+        <input type="text" name="course_label" value="{{ team['course_label'] or '' }}" placeholder="Ej. 1A, 3° o 7B">
+      </label>
+      <label>Máximo de contratos
+        <input type="number" name="max_contracts" min="1" value="{{ team['max_contracts'] }}" required>
+      </label>
+      <label>Función en la economía
+        <select name="market_role">
+          {% for key, label in market_role_options.items() %}
+            <option value="{{ key }}" {% if (team['market_role'] or 'both') == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Servicio principal
+        <select name="service_track">
+          {% if team['team_type'] == 'robotica' %}
+            <option value="robotica" selected>{{ service_track_options['robotica'] }}</option>
+          {% else %}
+            <option value="programacion" {% if (team['service_track'] or 'programacion') == 'programacion' %}selected{% endif %}>{{ service_track_options['programacion'] }}</option>
+            <option value="web_html" {% if team['service_track'] == 'web_html' %}selected{% endif %}>{{ service_track_options['web_html'] }}</option>
+          {% endif %}
+        </select>
+      </label>
+      <label>Notas
+        <textarea name="notes" rows="4">{{ team['notes'] or '' }}</textarea>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" name="active" {% if team['active'] %}checked{% endif %}> Equipo activo
+      </label>
+      <button type="submit">Guardar cambios</button>
+    </form>
+    {% else %}
+    <div class="kv-list compact">
+      <div><strong>Nombre:</strong> {{ team['name'] }}</div>
+      <div><strong>Máx. contratos:</strong> {{ team['max_contracts'] }}</div>
+      <div><strong>Notas:</strong> {{ team['notes'] or '—' }}</div>
+      <div><strong>Activo:</strong> {% if team['active'] %}sí{% else %}no{% endif %}</div>
+    </div>
+    <p class="muted top-gap">Vista solo lectura para interventores.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Estado y acciones</h2>
+    <div class="kv-list compact">
+      <div><strong>ID:</strong> {{ team['id'] }}</div>
+      <div><strong>Billetera:</strong> {{ team['wallet_id'] or '—' }}</div>
+      <div><strong>Saldo:</strong> {{ team['wallet_balance'] }}</div>
+      <div><strong>Curso visible:</strong> {{ team['course_label'] or 'Sin curso' }}</div>
+      <div><strong>Función en la economía:</strong> {{ market_role_options.get(team['market_role'] or 'both', team['market_role'] or 'both') }}</div>
+      <div><strong>Servicio principal:</strong> {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</div>
+      <div><strong>Integrantes activos:</strong> {{ member_count }}</div>
+      <div><strong>Contratos históricos:</strong> {{ contract_count }}</div>
+      <div><strong>Portfolios:</strong> {{ portfolio_count }}</div>
+      {% if team['team_type'] == 'desarrollo' %}
+        <div><strong>COO activo:</strong> {{ active_coo or 'todavía no asignado' }}</div>
+      {% endif %}
+      {% if open_cycle_info %}
+        <div><strong>Ciclo abierto:</strong> <a href="{{ url_for('admin_cycle_detail', cycle_id=open_cycle_info['id']) }}">{{ open_cycle_info['name'] }}</a> <span class="badge">{% if open_cycle_info['started'] %}activo{% else %}borrador{% endif %}</span></div>
+      {% else %}
+        <div><strong>Ciclo abierto:</strong> —</div>
+      {% endif %}
+    </div>
+
+    {% if current_user['role'] == 'admin' %}
+    <hr class="divider">
+    <h3>Ajuste manual de billetera</h3>
+    <form method="post" action="{{ url_for('admin_adjust_wallet', wallet_id=team['wallet_id']) }}" class="form-grid">
+      <input type="hidden" name="next" value="{{ url_for('admin_team_detail', team_id=team['id']) }}">
+      <label>Monto (+ o -)
+        <input type="number" name="amount" required>
+      </label>
+      <label>Descripción
+        <input type="text" name="description" value="Ajuste manual del equipo">
+      </label>
+      <button type="submit">Aplicar ajuste</button>
+    </form>
+
+    <hr class="divider">
+    <h3>Zona sensible</h3>
+    <p class="muted">
+      {% if global_open_cycle %}
+        No se puede borrar este equipo mientras exista un ciclo o borrador abierto en el sistema.
+      {% elif member_count > 0 %}
+        No se puede borrar este equipo mientras tenga integrantes activos. Primero quitá o desactivá a todos sus integrantes.
+      {% else %}
+        Este equipo ya se puede borrar definitivamente. Aunque tenga historial, el borrado está habilitado porque no tiene integrantes activos y no hay ciclos abiertos.
+      {% endif %}
+    </p>
+    <form method="post" action="{{ url_for('admin_delete_team', team_id=team['id']) }}">
+      {% if can_delete_team_now %}
+      <button type="submit" class="danger-btn">Borrar equipo</button>
+      {% else %}
+      <button type="submit" class="danger-btn" disabled>Borrar equipo</button>
+      {% endif %}
+    </form>
+    {% endif %}
+  </section>
+</div>
+
+{% if current_user['role'] == 'admin' %}
+<div class="grid two">
+  <section class="card">
+    <h2>Crear estudiante y sumarlo a este equipo</h2>
+    <form method="post" action="{{ url_for('admin_create_student') }}" class="form-grid">
+      <input type="hidden" name="next" value="{{ url_for('admin_team_detail', team_id=team['id']) }}">
+      <input type="hidden" name="team_id" value="{{ team['id'] }}">
+      <label>Nombre y apellido
+        <input type="text" name="full_name" required>
+      </label>
+      <label>Curso
+        <input type="text" name="course" placeholder="Ej. 1A o 6B">
+      </label>
+      <label>Rol interno
+        <select name="internal_role">
+          {% for role in allowed_roles %}
+            <option value="{{ role }}" {% if role == 'programador' %}selected{% endif %}>{{ role }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if team['team_type'] == 'desarrollo' %}
+        <p class="muted">Podés repetir programadores o contables. El sistema no deja un segundo COO activo.</p>
+      {% endif %}
+      {% if global_open_cycle %}<button type="submit" disabled>Crear y asignar</button><p class="muted">Bloqueado mientras exista un ciclo o borrador abierto.</p>{% else %}<button type="submit">Crear y asignar</button>{% endif %}
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Asignar estudiante existente</h2>
+    <form method="post" action="{{ url_for('admin_add_member') }}" class="form-grid">
+      <input type="hidden" name="next" value="{{ url_for('admin_team_detail', team_id=team['id']) }}">
+      <input type="hidden" name="team_id" value="{{ team['id'] }}">
+      <label>Estudiante sin equipo activo
+        <select name="student_id">
+          {% for student in available_students %}
+            <option value="{{ student['id'] }}">{{ student['full_name'] }} · {{ student['course'] }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Rol interno
+        <select name="internal_role">
+          {% for role in allowed_roles %}
+            <option value="{{ role }}" {% if role == 'programador' %}selected{% endif %}>{{ role }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if global_open_cycle %}<button type="submit" disabled>Asignar</button><p class="muted">Bloqueado mientras exista un ciclo o borrador abierto.</p>{% else %}<button type="submit">Asignar</button>{% endif %}
+    </form>
+  </section>
+</div>
+{% endif %}
+
+<section class="card">
+  <h2>Integrantes del equipo</h2>
+  <table>
+    <tr><th>Estudiante</th><th>Curso</th><th>Rol</th><th>Activo</th><th>Acciones</th></tr>
+    {% for member in members %}
+      <tr>
+        <td>{{ member['full_name'] }}</td>
+        <td>{{ member['course'] }}</td>
+        <td>{{ member['internal_role'] }}</td>
+        <td>{% if member['membership_active'] and member['student_active'] %}sí{% else %}no{% endif %}</td>
+        <td>
+          {% if current_user['role'] == 'admin' %}
+          <form method="post" action="{{ url_for('admin_update_student', student_id=member['student_id']) }}" class="inline-grid member-edit-form">
+            <input type="hidden" name="next" value="{{ url_for('admin_team_detail', team_id=team['id']) }}">
+            <input type="text" name="full_name" value="{{ member['full_name'] }}" required>
+            <input type="text" name="course" value="{{ member['course'] }}">
+            <label class="checkbox-row small"><input type="checkbox" name="active" {% if member['student_active'] %}checked{% endif %}> estudiante activo</label>
+            <button type="submit">Guardar estudiante</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_update_member', member_id=member['member_id']) }}" class="inline-grid member-edit-form mt-8">
+            <input type="hidden" name="next" value="{{ url_for('admin_team_detail', team_id=team['id']) }}">
+            <input type="hidden" name="team_id" value="{{ team['id'] }}">
+            <select name="internal_role">
+              {% for role in allowed_roles %}
+                <option value="{{ role }}" {% if role == member['internal_role'] %}selected{% endif %}>{{ role }}</option>
+              {% endfor %}
+            </select>
+            <label class="checkbox-row small"><input type="checkbox" name="active" {% if member['membership_active'] %}checked{% endif %}> membresía activa</label>
+            {% if global_open_cycle %}<button type="submit" disabled>Guardar rol</button>{% else %}<button type="submit">Guardar rol</button>{% endif %}
+          </form>
+          <div class="button-row wrap mt-8">
+            <form method="post" action="{{ url_for('admin_delete_member', member_id=member['member_id']) }}">
+              <input type="hidden" name="next" value="{{ url_for('admin_team_detail', team_id=team['id']) }}">
+              {% if global_open_cycle %}<button type="submit" class="secondary-btn" disabled>Quitar del equipo</button>{% else %}<button type="submit" class="secondary-btn">Quitar del equipo</button>{% endif %}
+            </form>
+            <form method="post" action="{{ url_for('admin_delete_student', student_id=member['student_id']) }}">
+              <input type="hidden" name="next" value="{{ url_for('admin_team_detail', team_id=team['id']) }}">
+              <button type="submit" class="danger-btn soft">Borrar estudiante</button>
+            </form>
+          </div>
+          {% else %}
+          <span class="muted">Solo lectura</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5">Todavía no hay integrantes.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Contratos del equipo</h2>
+    <table>
+      <tr><th>ID</th><th>Flujo</th><th>Monto</th><th>Estado</th><th>Firma / comentario</th></tr>
+      {% for contract in contracts %}
+        <tr>
+          <td>#{{ contract['id'] }}</td>
+          <td>{{ contract['client_name'] or contract['robotics_name'] }} → {{ contract['provider_name'] or contract['development_name'] }}</td>
+          <td>{{ contract['requested_amount'] }}</td>
+          <td>{{ contract['status'] }}</td>
+          <td>
+            {% if contract['last_interventor_username'] %}
+              <strong>{{ contract['last_interventor_username'] }}</strong><br>
+              <span class="muted">{{ contract['last_interventor_action'] or 'firma' }} · {{ contract['last_interventor_signed_at'] or '—' }}</span><br>
+              {{ contract['last_interventor_comment'] or 'Sin comentario' }}
+            {% else %}
+              <span class="muted">Sin firma todavía</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5">No hay contratos asociados.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Portfolios</h2>
+    <table>
+      <tr><th>ID</th><th>Título</th><th>Estado</th><th>Fecha</th></tr>
+      {% for portfolio in portfolios %}
+        <tr>
+          <td>{{ portfolio['id'] }}</td>
+          <td>{{ portfolio['title'] }}</td>
+          <td>{{ portfolio['status'] }}</td>
+          <td>{{ portfolio['created_at'] }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4">No hay portfolios.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Movimientos de la billetera del equipo</h2>
+  <table>
+    <tr><th>ID</th><th>Tipo</th><th>Monto</th><th>Origen</th><th>Destino</th><th>Actor</th></tr>
+    {% for tr in wallet_transactions %}
+      <tr>
+        <td>{{ tr['id'] }}</td>
+        <td>{{ tr['transaction_type'] }}</td>
+        <td>{{ tr['amount'] }}</td>
+        <td>{% if tr['from_owner_type'] == 'team' %}{{ tr['from_team_name'] }}{% elif tr['from_owner_type'] == 'treasury' %}Tesorería{% else %}—{% endif %}</td>
+        <td>{% if tr['to_owner_type'] == 'team' %}{{ tr['to_team_name'] }}{% elif tr['to_owner_type'] == 'treasury' %}Tesorería{% else %}—{% endif %}</td>
+        <td>{{ tr['actor_username'] or 'sistema' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6">Todavía no hay movimientos.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

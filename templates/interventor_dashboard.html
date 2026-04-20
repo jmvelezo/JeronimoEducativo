@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Panel interventor</h1>
+<div class="grid three">
+  <section class="card">
+    <h2>Ciclo activo</h2>
+    {% if active_cycle %}
+      <div><strong>{{ active_cycle['name'] }}</strong></div>
+      <p class="muted">Podés abrir la visualización del ciclo activo para revisar equipos implicados, contratos y contexto general.</p>
+      <div class="button-row wrap top-gap">
+        <a class="btn-link secondary" href="{{ url_for('admin_cycle_detail', cycle_id=active_cycle['id']) }}">Ver ciclo activo</a>
+        <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Ver equipos</a>
+      </div>
+    {% else %}
+      <p class="muted">No hay un ciclo activo en este momento.</p>
+      <div class="button-row wrap top-gap">
+        <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Ver equipos</a>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Contratos pendientes de activación</h2>
+    {% for c in pending_activation %}
+      <article class="list-item">
+        <strong>Contrato #{{ c['id'] }}</strong>
+        <div>{{ c['client_name'] or c['robotics_name'] }} → {{ c['provider_name'] or c['development_name'] }}</div>
+        <div>Monto reservado: {{ c['reserved_amount'] }}</div>
+        {% if c['provider_service_track'] %}<div class="muted">Servicio: {{ 'Web / HTML' if c['provider_service_track'] == 'web_html' else ('Programación' if c['provider_service_track'] == 'programacion' else c['provider_service_track']) }}</div>{% endif %}
+        <div>Fecha esperada de entrega: {{ c['requested_delivery_date'] or '—' }}</div>
+        {% if c['request_message'] %}<p><strong>Pedido:</strong> {{ c['request_message'] }}</p>{% endif %}
+        {% if c['request_stored_filename'] %}
+          <p><a href="{{ url_for('download_request_file', stored_filename=c['request_stored_filename']) }}">Descargar {{ c['request_original_filename'] or 'archivo del pedido' }}</a>{% if c['request_file_size'] %} <span class="muted">({{ c['request_file_size'] }} bytes)</span>{% endif %}</p>
+        {% endif %}
+        <form method="post" action="{{ url_for('activation_review', contract_id=c['id']) }}" class="form-grid inline-form">
+          <label>Decisión
+            <select name="decision">
+              <option value="approved">Aprobar</option>
+              <option value="correction_required">Pedir corrección</option>
+              <option value="rejected">Rechazar</option>
+            </select>
+          </label>
+          <label>Comentario
+            <input type="text" name="comment" required>
+          </label>
+          <button type="submit">Firmar revisión</button>
+        </form>
+      </article>
+    {% else %}
+      <p>No hay contratos pendientes de activación.</p>
+    {% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Entregas pendientes de revisión</h2>
+    {% for c in pending_delivery %}
+      <article class="list-item">
+        <strong>Contrato #{{ c['id'] }}</strong>
+        <div>{{ c['client_name'] or c['robotics_name'] }} → {{ c['provider_name'] or c['development_name'] }}</div>
+        <div class="muted">Entrega #{{ c['delivery_id'] }} · {{ c['submitted_at'] or 'sin fecha' }}</div>
+        <div class="chip-row mt-8">
+          {% if c['has_code'] %}<span class="badge">código</span>{% endif %}
+          {% if c['has_link'] %}<span class="badge">link</span>{% endif %}
+          {% if c['has_file'] %}<span class="badge">archivo</span>{% endif %}
+        </div>
+        {% if c['delivery_notes'] %}
+          <p><strong>Notas:</strong> {{ c['delivery_notes'] }}</p>
+        {% endif %}
+        {% if c['repository_link'] %}
+          <p><a href="{{ c['repository_link'] }}" target="_blank" rel="noopener">Abrir link entregado</a></p>
+        {% endif %}
+        {% if c['stored_filename'] %}
+          <p><a href="{{ url_for('download_delivery_file', stored_filename=c['stored_filename']) }}">Descargar {{ c['original_filename'] }}</a>{% if c['file_size'] %} <span class="muted">({{ c['file_size'] }} bytes)</span>{% endif %}</p>
+        {% endif %}
+        {% if c['code_text'] %}
+          <details>
+            <summary>Ver código pegado</summary>
+            <pre class="code-box">{{ c['code_text'] }}</pre>
+          </details>
+        {% endif %}
+        <form method="post" action="{{ url_for('final_review', contract_id=c['id']) }}" class="form-grid inline-form">
+          <label>Decisión
+            <select name="decision">
+              <option value="approved">Aprobar y liberar pago</option>
+              <option value="correction_required">Devolver a corrección</option>
+              <option value="rejected">Rechazar y devolver fondos</option>
+            </select>
+          </label>
+          <label>Comentario
+            <input type="text" name="comment" required>
+          </label>
+          <button type="submit">Guardar revisión</button>
+        </form>
+      </article>
+    {% else %}
+      <p>No hay entregas esperando revisión.</p>
+    {% endfor %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Contratos pausados por vencimiento</h2>
+  {% for c in paused_contracts %}
+    <article class="list-item">
+      <strong>Contrato #{{ c['id'] }}</strong>
+      <div>{{ c['client_name'] or c['robotics_name'] }} → {{ c['provider_name'] or c['development_name'] }}</div>
+      <div>Fecha comprometida: {{ c['requested_delivery_date'] or '—' }}</div>
+      <div class="muted">Motivo: {{ c['pause_reason'] or 'Se venció la fecha de entrega.' }}</div>
+      {% if c['request_message'] %}<p><strong>Pedido:</strong> {{ c['request_message'] }}</p>{% endif %}
+      <div class="grid two top-gap">
+        <form method="post" action="{{ url_for('deadline_reactivate', contract_id=c['id']) }}" class="form-grid inline-form">
+          <label>Nueva fecha de entrega
+            <input type="date" name="new_delivery_date" required>
+          </label>
+          <button type="submit">Reactivar</button>
+        </form>
+        <form method="post" action="{{ url_for('deadline_cancel', contract_id=c['id']) }}" class="form-grid inline-form" onsubmit="return confirm('¿Seguro que querés cancelar este contrato vencido? Se devolverá la reserva al equipo cliente.');">
+          <label>Motivo de cancelación
+            <input type="text" name="comment" required placeholder="Explicá brevemente la decisión">
+          </label>
+          <button type="submit" class="danger-btn soft">Cancelar contrato</button>
+        </form>
+      </div>
+    </article>
+  {% else %}
+    <p>No hay contratos pausados por vencimiento.</p>
+  {% endfor %}
+</section>
+{% endblock %}

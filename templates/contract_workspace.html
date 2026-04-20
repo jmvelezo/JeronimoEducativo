@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Contrato #{{ contract['id'] }}</h1>
+    <p class="muted">
+      {% if viewer_role == 'desarrollo_team' %}
+        Espacio ampliado para revisar entregas, devoluciones y firmas del interventor con más claridad.
+      {% else %}
+        Seguimiento completo del contrato: pedido, entregas, devoluciones y firmas del interventor.
+      {% endif %}
+    </p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for(back_endpoint) }}">{{ back_label }}</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Resumen</h2>
+    <div class="kv-list compact">
+      <div><strong>Equipo cliente:</strong> {{ contract['client_name'] or contract['robotics_name'] }}</div>
+      <div><strong>Equipo proveedor:</strong> {{ contract['provider_name'] or contract['development_name'] }}</div>
+      <div><strong>Portfolio:</strong> {{ contract['portfolio_title'] or '—' }}</div>
+      <div><strong>Estado:</strong> <span class="badge">{{ contract['status'] }}</span>{% if contract['paused_by_deadline'] %} <span class="badge warning">pausado por fecha</span>{% endif %}</div>
+      <div><strong>Monto:</strong> {{ contract['requested_amount'] }} JeroCoin</div>
+      <div><strong>Reserva actual:</strong> {{ contract['reserved_amount'] }} JeroCoin</div>
+      <div><strong>Fecha pedida:</strong> {{ contract['requested_delivery_date'] or '—' }}</div>
+      <div><strong>Ciclo:</strong> {{ contract['cycle_name'] or '—' }}{% if cycle_state %} · <span class="badge">{{ cycle_state }}</span>{% endif %}</div>
+      <div><strong>Pago liberado:</strong> {{ 'sí' if contract['payment_released'] else 'no' }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Pedido original</h2>
+    {% if contract['request_message'] %}
+      <p>{{ contract['request_message'] }}</p>
+    {% else %}
+      <p class="muted">No se escribió un mensaje adicional en el pedido.</p>
+    {% endif %}
+    {% if contract['request_stored_filename'] %}
+      <p><a href="{{ url_for('download_request_file', stored_filename=contract['request_stored_filename']) }}">Descargar {{ contract['request_original_filename'] or 'archivo del pedido' }}</a></p>
+    {% endif %}
+    <div class="subsection">
+      <h3>Última firma registrada</h3>
+      {% if contract['last_interventor_username'] %}
+        <p><strong>{{ contract['last_interventor_username'] }}</strong> · {{ contract['last_interventor_action'] or 'firma' }} · {{ contract['last_interventor_signed_at'] or '—' }}</p>
+        <p>{{ contract['last_interventor_comment'] or 'Sin comentario' }}</p>
+      {% else %}
+        <p class="muted">Todavía no hay firma registrada.</p>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+{% if latest_return_review %}
+<section class="card return-highlight major">
+  <div class="section-header compact">
+    <div>
+      <h2>Devolución visible del interventor</h2>
+      <p><strong>{{ latest_return_review['interventor_username'] or 'interventor' }}</strong> dejó esta devolución el {{ latest_return_review['signed_at'] }}.</p>
+    </div>
+  </div>
+  <p>{{ latest_return_review['comment'] }}</p>
+</section>
+{% endif %}
+
+{% if viewer_role == 'desarrollo_team' and can_submit_delivery %}
+<section class="card">
+  <div class="section-header compact">
+    <div>
+      <h2>Enviar nueva entrega</h2>
+      <p class="muted">Usen este espacio completo si necesitan trabajar con más comodidad que desde el panel resumido.</p>
+    </div>
+  </div>
+  <form method="post" action="{{ url_for('submit_delivery', contract_id=contract['id']) }}" class="form-grid inline-form" enctype="multipart/form-data">
+    <input type="hidden" name="next" value="{{ url_for('development_contract_detail', contract_id=contract['id']) }}">
+    <label>Notas de entrega
+      <input type="text" name="delivery_notes" placeholder="Qué incluye la entrega">
+    </label>
+    <label>Link repo/código
+      <input type="url" name="repository_link" placeholder="https://...">
+    </label>
+    <label>Código pegado en plataforma
+      <textarea name="code_text" rows="16" placeholder="Pegá acá el script, fragmento o explicación técnica."></textarea>
+    </label>
+    <label>Archivo adjunto
+      <input type="file" name="delivery_file" accept=".py,.txt,.md,.json,.csv,.zip,.rar,.7z,.ino,.c,.cpp,.h,.java,.js,.ts">
+    </label>
+    <p class="muted">La entrega debe incluir al menos una de estas tres cosas: código pegado, link o archivo.</p>
+    <button type="submit">Enviar a revisión</button>
+  </form>
+</section>
+{% endif %}
+
+<div class="grid two">
+  <section class="card">
+    <div class="section-header compact">
+      <div>
+        <h2>Historial de entregas</h2>
+        <p class="muted">Acá se ve mejor cada archivo, link o bloque de código entregado.</p>
+      </div>
+    </div>
+    {% for delivery in deliveries %}
+      <article class="delivery-card delivery-card-strong">
+        <div class="delivery-meta">
+          <strong>Entrega #{{ delivery['id'] }}</strong>
+          <span class="badge">{{ delivery['status'] }}</span>
+          <span class="muted">{{ delivery['submitted_at'] }}</span>
+        </div>
+        {% if delivery['delivery_notes'] %}
+          <p><strong>Notas:</strong> {{ delivery['delivery_notes'] }}</p>
+        {% endif %}
+        <div class="chip-row">
+          {% if delivery['has_code'] %}<span class="badge">código</span>{% endif %}
+          {% if delivery['has_link'] %}<span class="badge">link</span>{% endif %}
+          {% if delivery['has_file'] %}<span class="badge">archivo</span>{% endif %}
+        </div>
+        {% if delivery['repository_link'] %}
+          <p><a href="{{ delivery['repository_link'] }}" target="_blank" rel="noopener">Abrir link</a></p>
+        {% endif %}
+        {% if delivery['stored_filename'] %}
+          <p><a href="{{ url_for('download_delivery_file', stored_filename=delivery['stored_filename']) }}">Descargar {{ delivery['original_filename'] or 'archivo adjunto' }}</a>{% if delivery['file_size'] %} <span class="muted">({{ delivery['file_size'] }} bytes)</span>{% endif %}</p>
+        {% endif %}
+        <div class="button-row wrap top-gap">
+          <a class="btn-link secondary" href="{{ url_for('delivery_focus', delivery_id=delivery['id'], next=request.path) }}">Abrir entrega</a>
+        </div>
+        {% if delivery['code_text'] %}
+          <details open>
+            <summary>Ver código pegado</summary>
+            <pre class="code-box code-box-large">{{ delivery['code_text'] }}</pre>
+          </details>
+        {% endif %}
+      </article>
+    {% else %}
+      <p class="muted">Todavía no hay entregas registradas.</p>
+    {% endfor %}
+  </section>
+
+  <section class="card">
+    <div class="section-header compact">
+      <div>
+        <h2>Devoluciones y firmas</h2>
+        <p class="muted">Todas las observaciones del interventor quedan visibles con fecha y firma.</p>
+      </div>
+    </div>
+    {% for review in reviews %}
+      <article class="delivery-card {% if review['decision'] in ['correction_required', 'rejected'] %}review-card-return{% endif %}">
+        <div class="delivery-meta">
+          <strong>{{ review['interventor_username'] or 'interventor' }}</strong>
+          <span class="badge">{{ review['review_stage'] }}</span>
+          <span class="badge {% if review['decision'] in ['correction_required', 'rejected'] %}warning{% endif %}">{{ review['decision'] }}</span>
+          <span class="muted">{{ review['signed_at'] }}</span>
+        </div>
+        <p>{{ review['comment'] }}</p>
+      </article>
+    {% else %}
+      <p class="muted">Todavía no hay revisiones registradas.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

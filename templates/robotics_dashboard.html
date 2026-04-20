@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Panel de robótica · {{ team['name'] }}</h1>
+    <p class="muted">Ahora el trabajo de contratación se organiza desde el mercado común. Ahí pueden comparar servicios por producto, revisar portfolios y elegir con más claridad qué equipo o propuesta les conviene.</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('team_profile_manage') }}">Editar mi equipo</a>
+    <a class="btn-link" href="{{ url_for('marketplace') }}">Explorar mercado</a>
+    <a class="btn-link secondary" href="{{ url_for('team_rules_page') }}">Ver reglas</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card team-hero-card">
+    <div class="team-hero-inner">
+      <div class="team-logo-wrap large">
+        {% if team['logo_stored_filename'] %}
+          <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+        {% else %}
+          <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
+        {% endif %}
+      </div>
+      <div>
+        <span class="badge">robotica</span>
+        <h2>{{ team['name'] }}</h2>
+        <p>{{ team['profile_blurb'] or 'Todavía no cargaron una presentación visual del equipo. Pueden hacerlo desde “Editar mi equipo”.' }}</p>
+        <div class="chip-row top-gap">
+          <span class="badge">Saldo: {{ wallet['balance'] }} JeroCoin</span>
+          <span class="badge">Contrato base: {{ settings['contract_price'] }} JeroCoin</span>
+          {% if active_cycle %}<span class="badge">{{ active_cycle['name'] }}</span>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% if team_gallery %}
+      <div class="gallery-strip top-gap">
+        {% for item in team_gallery %}
+          <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Mi equipo</h2>
+    {% if active_cycle %}
+      <p class="muted">Ciclo activo: <strong>{{ active_cycle['name'] }}</strong>. El mercado muestra solo portfolios y servicios compatibles con los equipos incluidos en este ciclo.</p>
+    {% else %}
+      <p class="muted">Todavía no hay un ciclo activo para tu equipo. Cuando el admin inicie uno, el mercado se llenará con los servicios disponibles.</p>
+    {% endif %}
+    <div class="subsection">
+      <h3>Integrantes</h3>
+      <div class="roster-list compact-roster">
+        {% for member in members %}
+          <div class="roster-item">
+            <strong>{{ member['full_name'] }}</strong>
+            <span class="muted">{{ member['course'] }}</span>
+          </div>
+        {% else %}
+          <p class="muted">Todavía no hay integrantes cargados.</p>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="subsection">
+      <h3>Cómo funciona ahora</h3>
+      <ul class="muted simple-list">
+        <li>Entren a la <strong>Bolsa Digital</strong> para ver todos los servicios disponibles en un solo lugar.</li>
+        <li>Filtren por producto para comparar programación, web y otras propuestas del ciclo.</li>
+        <li>Abran cada ficha para revisar la propuesta antes de reservar.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="section-header">
+    <div>
+      <h2>Bolsa Digital del ciclo</h2>
+      <p class="muted">Desde ahora, la exploración principal se hace desde el Bolsa Digital general. Acá tienen un resumen rápido de lo que ya está publicado.</p>
+    </div>
+    <div class="button-row wrap">
+      <a class="btn-link" href="{{ url_for('marketplace') }}">Ir a la Bolsa Digital</a>
+    </div>
+  </div>
+
+  {% if active_cycle and portfolios %}
+    <div class="grid two">
+      <div class="card">
+        <h3>Servicios por línea</h3>
+        <div class="kv-list compact">
+          {% for row in market_track_summary %}
+            <div><strong>{{ row['label'] }}</strong><br><span class="muted">{{ row['total'] }} portfolio(s) publicado(s)</span></div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="card">
+        <h3>Productos destacados</h3>
+        <div class="chip-row">
+          {% for row in market_featured_categories %}
+            <a class="btn-link secondary" href="{{ url_for('marketplace', service_category=row['key']) }}">{{ row['label'] }} · {{ row['total'] }}</a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="subsection">
+      <h3>Cómo usar la Bolsa Digital</h3>
+      <ul class="muted simple-list">
+        <li>Usen los filtros para concentrarse en un producto específico.</li>
+        <li>Entren a la ficha pública de cada oferta para verla completa.</li>
+        <li>Desde esa ficha pueden pasar al espacio de contratación cuando corresponda.</li>
+      </ul>
+    </div>
+  {% elif active_cycle %}
+    <div class="warning-box">Hay un ciclo activo, pero todavía no se publicaron portfolios visibles en el Bolsa Digital.</div>
+  {% else %}
+    <div class="warning-box">Todavía no hay mercado activo porque no existe un ciclo en funcionamiento para tu equipo.</div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Mis contratos</h2>
+  <table>
+    <tr><th>ID</th><th>Equipo proveedor</th><th>Servicio</th><th>Monto</th><th>Reservado</th><th>Estado</th><th>Firma / comentario</th><th>Acciones</th></tr>
+    {% for c in contracts %}
+      <tr>
+        <td>{{ c['id'] }}</td>
+        <td>
+          {{ c['provider_name'] or c['development_name'] }}
+          {% if c['provider_service_track_resolved'] %}<br><span class="muted">{{ service_track_options.get(c['provider_service_track_resolved'], c['provider_service_track_resolved']) }}</span>{% endif %}
+        </td>
+        <td>{{ c['portfolio_title'] or '—' }}</td>
+        <td>{{ c['requested_amount'] }}</td>
+        <td>{{ c['reserved_amount'] }}</td>
+        <td>{{ c['status'] }}{% if c['paused_by_deadline'] %} · pausado{% endif %}{% if latest_return_reviews.get(c['id']) %}<br><span class="badge warning">devolución</span>{% endif %}</td>
+        <td>
+          {% if c['last_interventor_username'] %}
+            <strong>{{ c['last_interventor_username'] }}</strong><br>
+            <span class="muted">{{ c['last_interventor_action'] or 'firma' }} · {{ c['last_interventor_signed_at'] or '—' }}</span><br>
+            {{ c['last_interventor_comment'] or 'Sin comentario' }}
+            {% if contract_reviews.get(c['id']) %}
+              <details>
+                <summary>Historial</summary>
+                {% for review in contract_reviews.get(c['id'], []) %}
+                  <div class="muted top-gap">{{ review['interventor_username'] }} · {{ review['review_stage'] }} · {{ review['decision'] }} · {{ review['comment'] }}</div>
+                {% endfor %}
+              </details>
+            {% endif %}
+          {% else %}
+            <span class="muted">Sin firma todavía</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="button-row wrap">
+            {% if c['portfolio_id'] %}
+              <a class="btn-link secondary" href="{{ url_for('robotics_portfolio_detail', portfolio_id=c['portfolio_id']) }}">Ver portfolio</a>
+            {% endif %}
+            <a class="btn-link secondary" href="{{ url_for('robotics_contract_detail', contract_id=c['id']) }}">Seguimiento completo</a>
+            {% if c['latest_delivery_id'] %}
+              <a class="btn-link secondary" href="{{ url_for('delivery_focus', delivery_id=c['latest_delivery_id'], next=url_for('robotics_dashboard')) }}">Abrir entrega</a>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8">No hay contratos todavía.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

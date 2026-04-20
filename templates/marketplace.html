@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card landing-hero">
+  <div class="landing-hero-copy">
+    <span class="badge large">Bolsa Digital de servicios</span>
+    <h1>Portfolios y propuestas en un solo lugar</h1>
+    <p>Este catálogo reúne ofertas de programación, web / HTML y futuras propuestas del sistema. La idea es que cualquier rol pueda mirar el panorama completo, comparar productos y entender qué ofrece cada equipo, aunque trabajen en cursos distintos.</p>
+    <div class="chip-row top-gap">
+      {% if active_cycle %}<span class="badge">Ciclo activo: {{ active_cycle['name'] }}</span>{% else %}<span class="badge">Sin ciclo activo</span>{% endif %}
+      <span class="badge">Visible para todos los roles</span>
+      <span class="badge">Portfolios + Ofertas públicas</span>
+      <span class="badge">3° HTML entra como proveedor web</span>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <div>
+      <h2>Filtrar catálogo</h2>
+      <p class="muted">Usá filtros simples para recorrer el mercado por tipo de equipo o por producto ofrecido.</p>
+    </div>
+  </div>
+  <form method="get" class="form-grid market-filter-grid">
+    <label>Categoría de servicio
+      <select name="service_category">
+        <option value="">Todas</option>
+        {% for key, label in portfolio_service_category_options.items() %}
+          <option value="{{ key }}" {% if selected_service_category == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Línea de equipo
+      <select name="service_track">
+        <option value="">Todas</option>
+        {% for key, label in service_track_options.items() %}
+          <option value="{{ key }}" {% if selected_service_track == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="button-row wrap market-filter-actions">
+      <button type="submit">Aplicar filtros</button>
+      <a class="btn-link secondary" href="{{ url_for('marketplace') }}">Limpiar</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <div>
+      <h2>Portfolios publicados</h2>
+      <p class="muted">Catálogo común de servicios. Entre equipos no se muestran integrantes: la atención está puesta en el producto, la presentación y la categoría.</p>
+    </div>
+    <span class="badge large">{{ portfolios|length }} portfolios</span>
+  </div>
+  <div class="portfolio-list-grid">
+    {% for p in portfolios %}
+      <article class="portfolio-card visual-card market-card">
+        <div class="portfolio-cover {% if p['service_track'] == 'web_html' %}market-cover-web{% endif %}">
+          {% if p['preview_gallery_image'] %}
+            <img src="{{ url_for('team_gallery_file', stored_filename=p['preview_gallery_image']) }}" alt="Vista previa de {{ p['team_name'] }}">
+          {% elif p['logo_stored_filename'] %}
+            <img src="{{ url_for('team_logo_file', stored_filename=p['logo_stored_filename']) }}" alt="Logo de {{ p['team_name'] }}">
+          {% else %}
+            <div class="portfolio-cover-placeholder">{{ p['team_name'][:2]|upper }}</div>
+          {% endif %}
+        </div>
+        <div class="portfolio-card-body">
+          <div class="portfolio-topline">
+            <strong>{{ p['team_name'] }}</strong>
+            <span class="badge">{{ service_track_options.get(p['service_track'], p['service_track']) }}</span>
+          </div>
+          <div class="chip-row top-gap">
+            <span class="badge">{{ portfolio_service_category_options.get(p['service_category'], p['service_category']) }}</span>
+            <span class="badge secondary-badge">{{ 'proveedor web' if p['service_track'] == 'web_html' else p['team_type'] }}</span>
+          </div>
+          <h3>{{ p['title'] }}</h3>
+          <p>{{ p['description'] or p['profile_blurb'] or 'Sin descripción breve cargada.' }}</p>
+          <div class="button-row wrap mt-8">
+            <a class="btn-link secondary" href="{{ url_for('market_portfolio_detail', portfolio_id=p['id']) }}">Ver detalle</a>
+            {% if current_user and current_user['role'] in ['robotica_team', 'desarrollo_team'] and current_user['team_id'] != p['team_id'] %}
+              <a class="btn-link" href="{{ url_for('market_portfolio_detail', portfolio_id=p['id']) }}">Ver / contratar</a>
+            {% endif %}
+          </div>
+        </div>
+      </article>
+    {% else %}
+      <p class="muted">No hay portfolios publicados con esos filtros.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <div>
+      <h2>Ofertas públicas</h2>
+      <p class="muted">Estas ofertas salen desde tesorería. Los equipos proveedores compatibles pueden abrirlas, revisarlas y tomarlas si les conviene dentro de su carga de trabajo.</p>
+    </div>
+    <span class="badge large">{{ admin_offers|length }} ofertas</span>
+  </div>
+  <div class="team-grid">
+    {% for offer in admin_offers %}
+      <article class="card market-offer-card">
+        <div class="portfolio-topline">
+          <strong>{{ offer['title'] }}</strong>
+          <span class="badge">{{ offer['status'] }}</span>
+        </div>
+        <div class="chip-row top-gap">
+          <span class="badge">{{ portfolio_service_category_options.get(offer['service_category'], offer['service_category']) }}</span>
+          <span class="badge">Recompensa: {{ offer['reward_amount'] }} JeroCoin</span>
+          {% if offer['deadline'] %}<span class="badge">Entrega: {{ offer['deadline'] }}</span>{% endif %}
+        </div>
+        <p class="top-gap">{{ offer['description'] or 'Sin descripción detallada.' }}</p>
+        <p class="muted tiny">Publicada por {{ offer['created_by_username'] or 'admin' }}{% if offer['taken_by_team_name'] %} · tomada por {{ offer['taken_by_team_name'] }}{% endif %}</p>
+        <div class="button-row wrap mt-8">
+          <a class="btn-link secondary" href="{{ url_for('market_offer_detail', offer_id=offer['id']) }}">Ver detalle</a>
+          {% if current_user and current_user['role'] == 'desarrollo_team' and offer['status'] == 'open' %}
+            <a class="btn-link" href="{{ url_for('market_offer_detail', offer_id=offer['id']) }}">Tomar oferta</a>
+          {% endif %}
+        </div>
+      </article>
+    {% else %}
+      <p class="muted">Todavía no hay ofertas públicas cargadas en el sistema.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

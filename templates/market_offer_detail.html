@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card team-hero-card {% if offer['service_category'] in ['pagina_web_simple', 'landing_html'] %}web-hero-accent{% endif %}">
+  <div class="section-header">
+    <div>
+      <span class="badge large">Oferta pública del admin</span>
+      <h1>{{ offer['title'] }}</h1>
+      <p class="muted">Trabajo financiado desde tesorería. Si tu equipo lo toma, queda marcado en el mercado y el admin puede cerrarlo cuando corresponda.</p>
+    </div>
+    <div class="button-row wrap">
+      <a class="btn-link secondary" href="{{ url_for('marketplace') }}">Volver al mercado</a>
+      {% if current_user and current_user['role'] == 'desarrollo_team' and can_take %}
+        <form method="post" action="{{ url_for('take_admin_offer', offer_id=offer['id']) }}" onsubmit="return confirm('¿Seguro que quieren tomar esta oferta pública?');">
+          <button type="submit">Tomar oferta</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  <div class="chip-row top-gap">
+    <span class="badge">{{ portfolio_service_category_options.get(offer['service_category'], offer['service_category']) }}</span>
+    <span class="badge">Recompensa: {{ offer['reward_amount'] }} JeroCoin</span>
+    <span class="badge">Estado: {{ offer['status'] }}</span>
+    {% if offer['deadline'] %}<span class="badge">Entrega sugerida: {{ offer['deadline'] }}</span>{% endif %}
+    {% if offer['cycle_id'] %}<span class="badge">Asociada al ciclo #{{ offer['cycle_id'] }}</span>{% endif %}
+  </div>
+  <div class="top-gap">
+    <p>{{ offer['description'] or 'Sin descripción detallada.' }}</p>
+    <p class="muted">Publicada por {{ offer['created_by_username'] or 'admin' }}{% if offer['taken_by_team_name'] %} · tomada por {{ offer['taken_by_team_name'] }}{% endif %}</p>
+  </div>
+  {% if current_user and current_user['role'] == 'desarrollo_team' and not can_take %}
+    <div class="warning-box top-gap">
+      {% if offer['status'] == 'taken' and offer['taken_by_team_name'] %}
+        Esta oferta ya fue tomada por {{ offer['taken_by_team_name'] }}.
+      {% elif offer['status'] != 'open' %}
+        Esta oferta ya no está disponible para ser tomada.
+      {% elif team_capacity_note %}
+        {{ team_capacity_note }}
+      {% else %}
+        Tu equipo no puede tomar esta oferta por el momento.
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

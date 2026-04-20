@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>{{ portfolio['title'] }}</h1>
+    <p class="muted">Equipo proveedor: {{ portfolio['dev_team_name'] }}</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('robotics_dashboard') }}">Volver al panel</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card team-hero-card">
+    <div class="team-hero-inner">
+      <div class="team-logo-wrap large">
+        {% if portfolio['logo_stored_filename'] %}
+          <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=portfolio['logo_stored_filename']) }}" alt="Logo de {{ portfolio['dev_team_name'] }}">
+        {% else %}
+          <div class="team-logo-placeholder">{{ portfolio['dev_team_name'][:2]|upper }}</div>
+        {% endif %}
+      </div>
+      <div>
+        <span class="badge">equipo desarrollador</span>
+        <span class="badge">{{ service_track_options.get(portfolio['service_track'] or 'desarrollo', portfolio['service_track'] or 'desarrollo') }}</span>
+        <h2>{{ portfolio['dev_team_name'] }}</h2>
+        <p>{{ portfolio['profile_blurb'] or portfolio['description'] or 'Este equipo no cargó una presentación visual todavía.' }}</p>
+        <div class="chip-row top-gap">
+          <span class="badge">Saldo de mi equipo: {{ wallet['balance'] }} JeroCoin</span>
+          <span class="badge">Contrato: {{ settings['contract_price'] }} JeroCoin</span>
+          <span class="badge">Proyectos activos: {{ active_contracts }}</span>
+        </div>
+      </div>
+    </div>
+    {% if dev_gallery %}
+      <div class="gallery-grid top-gap compact-gallery">
+        {% for item in dev_gallery %}
+          <article class="gallery-card public">
+            <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+            {% if item['caption'] %}<div class="gallery-caption">{{ item['caption'] }}</div>{% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Portfolio</h2>
+    <div class="chip-row">
+      <span class="badge">{{ portfolio_service_category_options.get(portfolio['service_category'] or 'programacion_robotica', portfolio['service_category'] or 'programacion_robotica') }}</span>
+    </div>
+    <p>{{ portfolio['description'] or 'Este equipo no cargó una descripción breve.' }}</p>
+    {% if portfolio['skills'] %}
+      <div class="subsection">
+        <h3>Fortalezas y habilidades</h3>
+        <p>{{ portfolio['skills'] }}</p>
+      </div>
+    {% endif %}
+    {% if portfolio['tools'] %}
+      <div class="subsection">
+        <h3>Herramientas o lenguajes</h3>
+        <p>{{ portfolio['tools'] }}</p>
+      </div>
+    {% endif %}
+    {% if portfolio['work_style'] %}
+      <div class="subsection">
+        <h3>Forma de trabajo</h3>
+        <p>{{ portfolio['work_style'] }}</p>
+      </div>
+    {% endif %}
+    <p class="muted">Entre equipos no se muestran los integrantes. Lo importante acá es la presentación del equipo y el portfolio de trabajo.</p>
+  </section>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Mi equipo</h2>
+    <div class="roster-list compact-roster">
+      {% for member in my_members %}
+        <div class="roster-item">
+          <strong>{{ member['full_name'] }}</strong>
+          <span class="muted">{{ member['course'] }}</span>
+        </div>
+      {% else %}
+        <p class="muted">No hay integrantes cargados.</p>
+      {% endfor %}
+    </div>
+    {% if my_gallery %}
+      <div class="gallery-strip top-gap">
+        {% for item in my_gallery %}
+          <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    {% if current_contract %}
+      <h2>Contrato actual con este equipo</h2>
+      <div class="kv-list compact">
+        <div><strong>ID:</strong> {{ current_contract['id'] }}</div>
+        <div><strong>Estado:</strong> {{ current_contract['status'] }}{% if current_contract['paused_by_deadline'] %} · <span class="badge">pausado por fecha</span>{% endif %}</div>
+        <div><strong>Monto:</strong> {{ current_contract['requested_amount'] }} JeroCoin</div>
+        <div><strong>Reserva actual:</strong> {{ current_contract['reserved_amount'] }} JeroCoin</div>
+        <div><strong>Fecha pedida:</strong> {{ current_contract['requested_delivery_date'] or '—' }}</div>
+        {% if current_contract['request_message'] %}
+          <div><strong>Pedido:</strong> {{ current_contract['request_message'] }}</div>
+        {% endif %}
+        {% if current_contract['request_stored_filename'] %}
+          <div><strong>Archivo del pedido:</strong> <a href="{{ url_for('download_request_file', stored_filename=current_contract['request_stored_filename']) }}">{{ current_contract['request_original_filename'] or 'Descargar archivo' }}</a></div>
+        {% endif %}
+      </div>
+      <div class="subsection">
+        <h3>Firma y comentarios del interventor</h3>
+        {% if current_contract['last_interventor_username'] %}
+          <p><strong>Última firma:</strong> {{ current_contract['last_interventor_username'] }} · {{ current_contract['last_interventor_action'] or 'firma' }} · {{ current_contract['last_interventor_signed_at'] or '—' }}</p>
+          <p><strong>Comentario:</strong> {{ current_contract['last_interventor_comment'] or 'Sin comentario' }}</p>
+        {% else %}
+          <p class="muted">Todavía no hay firma registrada.</p>
+        {% endif %}
+        {% if current_contract_reviews.get(current_contract['id']) %}
+          <details>
+            <summary>Ver historial de firmas</summary>
+            <div class="top-gap">
+              {% for review in current_contract_reviews.get(current_contract['id'], []) %}
+                <div class="delivery-card">
+                  <div class="delivery-meta">
+                    <strong>{{ review['interventor_username'] or 'interventor' }}</strong>
+                    <span class="badge">{{ review['review_stage'] }}</span>
+                    <span class="badge">{{ review['decision'] }}</span>
+                    <span class="muted">{{ review['signed_at'] }}</span>
+                  </div>
+                  <p>{{ review['comment'] }}</p>
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+      </div>
+      <div class="button-row wrap mt-8">
+        <a class="btn-link secondary" href="{{ url_for('robotics_contract_detail', contract_id=current_contract['id']) }}">Abrir seguimiento completo</a>
+      </div>
+      {% if latest_return_review %}
+        <div class="return-highlight top-gap">
+          <h3>Última devolución del interventor</h3>
+          <p><strong>{{ latest_return_review['interventor_username'] or 'interventor' }}</strong> dejó una devolución el {{ latest_return_review['signed_at'] }}.</p>
+          <p>{{ latest_return_review['comment'] }}</p>
+        </div>
+      {% endif %}
+      {% if current_contract['status'] not in ['closed', 'cancelled', 'validated'] and not current_contract['payment_released'] %}
+        <form method="post" action="{{ url_for('cancel_robotics_contract', contract_id=current_contract['id']) }}" class="stack-form mt-8" onsubmit="return confirm('¿Seguro que quieren cancelar este contrato? La reserva volverá al equipo de robótica.');">
+          <input type="hidden" name="next" value="{{ url_for('robotics_portfolio_detail', portfolio_id=portfolio['id']) }}">
+          <label for="cancel_reason">Motivo de cancelación</label>
+          <textarea id="cancel_reason" name="cancel_reason" rows="3" placeholder="Escriban brevemente por qué cancelan este contrato..." required></textarea>
+          <button type="submit" class="danger-btn">Cancelar contrato</button>
+        </form>
+      {% endif %}
+    {% else %}
+      {% if last_contract %}
+        <h2>Último contrato con este equipo</h2>
+        <div class="delivery-card">
+          <div class="delivery-meta">
+            <strong>Contrato #{{ last_contract['id'] }}</strong>
+            <span class="badge">{{ last_contract['status'] }}</span>
+            <span class="muted">{{ last_contract['closed_at'] or last_contract['created_at'] }}</span>
+          </div>
+          {% if last_contract['last_interventor_username'] %}
+            <p><strong>Última firma:</strong> {{ last_contract['last_interventor_username'] }} · {{ last_contract['last_interventor_action'] or 'firma' }}</p>
+            <p><strong>Comentario:</strong> {{ last_contract['last_interventor_comment'] or 'Sin comentario' }}</p>
+          {% endif %}
+          <div class="button-row wrap mt-8">
+            <a class="btn-link secondary" href="{{ url_for('robotics_contract_detail', contract_id=last_contract['id']) }}">Ver contrato anterior</a>
+          </div>
+        </div>
+      {% endif %}
+      <h2>{% if last_contract %}Pedir un nuevo contrato{% else %}Reservar contrato{% endif %}</h2>
+      <p class="muted">Tu equipo puede tener hasta 2 contratos abiertos a la vez. Cuando uno se cierra, ese lugar vuelve a quedar libre.</p>
+      {% if robotics_open_contracts >= 2 %}
+        <div class="warning-box top-gap">Tu equipo ya tiene 2 contratos abiertos en este ciclo. Cerrá o cancelá uno antes de reservar otro.</div>
+      {% endif %}
+      <form method="post" action="{{ url_for('request_contract') }}" class="form-grid" enctype="multipart/form-data" onsubmit="return confirm('¿Seguro que quieren reservar este contrato? Se apartarán {{ settings['contract_price'] }} JeroCoin hasta que el interventor lo revise.');">
+        <input type="hidden" name="portfolio_id" value="{{ portfolio['id'] }}">
+        <input type="hidden" name="next" value="{{ url_for('robotics_portfolio_detail', portfolio_id=portfolio['id']) }}">
+        <label>Fecha esperada de entrega
+          <input type="date" name="requested_delivery_date" required>
+        </label>
+        <label>Mensaje del pedido
+          <textarea name="request_message" rows="4" placeholder="Expliquen qué quieren que programe este equipo para su robot."></textarea>
+        </label>
+        <label>Archivo del pedido (opcional)
+          <input type="file" name="request_file" accept=".png,.jpg,.jpeg,.webp,.gif,.py,.txt,.md,.json,.csv,.zip,.rar,.7z,.ino,.c,.cpp,.h,.java,.js,.ts">
+        </label>
+        <button type="submit" {% if robotics_open_contracts >= 2 %}disabled{% endif %}>Reservar contrato</button>
+      </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

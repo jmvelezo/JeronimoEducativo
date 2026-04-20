@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Entrega #{{ delivery['id'] }}</h1>
+    <p class="muted">Contrato #{{ delivery['contract_id'] }} · {{ delivery['client_name'] or delivery['robotics_name'] }} → {{ delivery['provider_name'] or delivery['development_name'] }}</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('admin_deliveries') }}">Volver al historial</a>
+    <a class="btn-link secondary" href="{{ url_for('admin_team_detail', team_id=delivery['provider_team_id'] or delivery['development_team_id']) }}">Ver equipo</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Resumen</h2>
+    <div class="kv-list">
+      <div><strong>Estado de la entrega:</strong> {{ delivery['status'] }}</div>
+      <div><strong>Estado del contrato:</strong> {{ delivery['contract_status'] }}</div>
+      <div><strong>Usuario que subió:</strong> {{ delivery['submitted_by'] }}</div>
+      <div><strong>Fecha:</strong> {{ delivery['submitted_at'] }}</div>
+      <div><strong>Monto del contrato:</strong> {{ delivery['requested_amount'] }} JeroCoin</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Material entregado</h2>
+    <div class="chip-row">
+      {% if delivery['code_text'] %}<span class="badge">código</span>{% endif %}
+      {% if delivery['repository_link'] %}<span class="badge">link</span>{% endif %}
+      {% if delivery['stored_filename'] %}<span class="badge">archivo</span>{% endif %}
+    </div>
+    {% if delivery['delivery_notes'] %}
+      <p><strong>Notas:</strong> {{ delivery['delivery_notes'] }}</p>
+    {% endif %}
+    {% if delivery['repository_link'] %}
+      <p><a href="{{ delivery['repository_link'] }}" target="_blank" rel="noopener">Abrir link entregado</a></p>
+    {% endif %}
+    {% if delivery['stored_filename'] %}
+      <p><a href="{{ url_for('download_delivery_file', stored_filename=delivery['stored_filename']) }}">Descargar {{ delivery['original_filename'] }}</a>{% if delivery['file_size'] %} <span class="muted">({{ delivery['file_size'] }} bytes)</span>{% endif %}</p>
+    {% endif %}
+  </section>
+</div>
+
+{% if delivery['code_text'] %}
+<section class="card">
+  <h2>Código pegado en plataforma</h2>
+  <pre class="code-box">{{ delivery['code_text'] }}</pre>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Historial de revisiones del contrato</h2>
+  <table>
+    <tr><th>ID</th><th>Etapa</th><th>Decisión</th><th>Interventor</th><th>Comentario</th></tr>
+    {% for review in reviews %}
+      <tr>
+        <td>#{{ review['id'] }}</td>
+        <td>{{ review['review_stage'] }}</td>
+        <td>{{ review['decision'] }}</td>
+        <td>{{ review['interventor_username'] }}</td>
+        <td>{{ review['comment'] }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5">Todavía no hay revisiones para este contrato.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

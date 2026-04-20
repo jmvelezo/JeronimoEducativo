@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Entrega #{{ delivery['id'] }}</h1>
+    <p class="muted">Vista ampliada para leer y trabajar el contenido completo de la entrega.</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ next_url }}">Volver</a>
+  </div>
+</div>
+
+<section class="card delivery-focus-hero">
+  <div class="kv-list compact">
+    <div><strong>Contrato:</strong> #{{ delivery['contract_id'] }}</div>
+    <div><strong>Equipo cliente:</strong> {{ delivery['client_name'] or delivery['robotics_name'] }}</div>
+    <div><strong>Equipo proveedor:</strong> {{ delivery['provider_name'] or delivery['development_name'] }}</div>
+    <div><strong>Portfolio:</strong> {{ delivery['portfolio_title'] or '—' }}</div>
+    <div><strong>Estado de la entrega:</strong> <span class="badge">{{ delivery['status'] }}</span></div>
+    <div><strong>Enviada por:</strong> {{ delivery['submitted_by'] or '—' }}</div>
+    <div><strong>Fecha:</strong> {{ delivery['submitted_at'] }}</div>
+  </div>
+  {% if delivery['delivery_notes'] %}
+    <div class="top-gap">
+      <strong>Notas:</strong>
+      <p>{{ delivery['delivery_notes'] }}</p>
+    </div>
+  {% endif %}
+  <div class="button-row wrap top-gap">
+    {% if delivery['has_file'] %}
+      <a class="btn-link secondary" href="{{ url_for('download_delivery_file', stored_filename=delivery['stored_filename']) }}">Descargar {{ delivery['original_filename'] or 'archivo adjunto' }}</a>
+    {% endif %}
+    {% if delivery['has_link'] %}
+      <a class="btn-link secondary" href="{{ delivery['repository_link'] }}" target="_blank" rel="noopener">Abrir link</a>
+    {% endif %}
+  </div>
+</section>
+
+{% if delivery['code_text'] %}
+<section class="card delivery-focus-code-card">
+  <div class="section-header compact">
+    <div>
+      <h2>Código completo</h2>
+      <p class="muted">Este espacio muestra el código pegado en un formato más grande para revisarlo con comodidad.</p>
+    </div>
+  </div>
+  <pre class="code-box code-box-large code-box-focus">{{ delivery['code_text'] }}</pre>
+</section>
+{% else %}
+<section class="card">
+  <h2>Sin código pegado</h2>
+  <p class="muted">Esta entrega no incluye código escrito directamente en la plataforma. Usá el archivo o el link si fueron adjuntados.</p>
+</section>
+{% endif %}
+{% endblock %}

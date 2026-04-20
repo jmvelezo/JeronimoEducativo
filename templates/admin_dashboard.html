@@ -1,0 +1,296 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Panel administrador</h1>
+<p class="muted">Este panel queda como centro de monitoreo. La gestión fina vive en <a href="{{ url_for('admin_teams') }}">Gestión de equipos</a> y la liquidación económica por ciclo ahora tiene su propia pantalla en <a href="{{ url_for('admin_cycle_center') }}">Centro de ciclos</a>.</p>
+
+<section class="stats-grid">
+  <div class="card stat-card">
+    <div class="muted">Equipos</div>
+    <div class="big">{{ stats['team_total'] }}</div>
+  </div>
+  <div class="card stat-card">
+    <div class="muted">Estudiantes activos</div>
+    <div class="big">{{ stats['student_total'] }}</div>
+  </div>
+  <div class="card stat-card">
+    <div class="muted">Contratos activos</div>
+    <div class="big">{{ stats['active_contracts'] }}</div>
+  </div>
+  <div class="card stat-card">
+    <div class="muted">Tesorería</div>
+    <div class="big">{{ stats['treasury_balance'] }}</div>
+  </div>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Accesos rápidos</h2>
+    <div class="button-row wrap">
+      <a class="btn-link" href="{{ url_for('admin_teams') }}">Ir a gestión de equipos</a>
+      <a class="btn-link secondary" href="{{ url_for('admin_cycle_center') }}">Centro de ciclos</a>
+      <a class="btn-link secondary" href="{{ url_for('admin_deliveries') }}">Ver todas las entregas</a>
+      <a class="btn-link secondary" href="{{ url_for('admin_dashboard') }}">Actualizar panel</a>
+    </div>
+    <hr class="divider">
+    <h3>Configuración económica activa</h3>
+    {% if settings %}
+      <div class="kv-list">
+        <div><strong>Contrato:</strong> {{ settings['contract_price'] }} JeroCoin</div>
+        <div><strong>Costo base:</strong> {{ settings['base_cost'] }}</div>
+        <div><strong>Por integrante:</strong> {{ settings['cost_per_member'] }}</div>
+        <div><strong>Sobrecosto 2do proyecto:</strong> {{ settings['second_project_surcharge'] }}</div>
+        <div><strong>Firmas interventor:</strong> {{ settings['required_interventor_signatures'] }}</div>
+      </div>
+    {% else %}
+      <p class="muted">No hay configuración económica cargada.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Recompensa rápida a robótica</h2>
+    <form method="post" action="{{ url_for('add_reward') }}" class="form-grid">
+      <label>Equipo de robótica
+        <select name="team_id">
+          {% for team in teams if team['team_type'] == 'robotica' %}
+            <option value="{{ team['id'] }}">{{ team['name'] }} · saldo {{ team['wallet_balance'] }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Monto
+        <input type="number" name="amount" min="1" value="10" required>
+      </label>
+      <label>Motivo
+        <input type="text" name="reason" value="Recompensa manual">
+      </label>
+      <button type="submit">Cargar recompensa</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Ofertas públicas</h2>
+    <p class="muted">Publicá trabajos financiados por tesorería. Aparecen en el mercado y los equipos proveedores compatibles pueden tomarlos.</p>
+    <form method="post" action="{{ url_for('admin_create_offer') }}" class="form-grid">
+      <label>Título
+        <input type="text" name="title" required placeholder="Ej: Landing para evento escolar">
+      </label>
+      <label>Categoría de servicio
+        <select name="service_category">
+          {% for key, label in portfolio_service_category_options.items() %}
+            <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Recompensa
+        <input type="number" min="0" name="reward_amount" value="20" required>
+      </label>
+      <label>Fecha sugerida
+        <input type="date" name="deadline">
+      </label>
+      <label>Descripción
+        <textarea name="description" rows="4" placeholder="Qué tienen que entregar, para quién y qué se espera del trabajo."></textarea>
+      </label>
+      <button type="submit">Publicar oferta</button>
+    </form>
+    <hr class="divider">
+    <table>
+      <tr><th>Oferta</th><th>Categoría</th><th>Estado</th><th>Tomada por</th><th>Acciones</th></tr>
+      {% for offer in recent_admin_offers %}
+        <tr>
+          <td><a href="{{ url_for('market_offer_detail', offer_id=offer['id']) }}">{{ offer['title'] }}</a><div class="muted tiny">{{ offer['reward_amount'] }} JeroCoin{% if offer['deadline'] %} · {{ offer['deadline'] }}{% endif %}</div></td>
+          <td>{{ portfolio_service_category_options.get(offer['service_category'], offer['service_category']) }}</td>
+          <td><span class="badge">{{ offer['status'] }}</span></td>
+          <td>{{ offer['taken_by_team_name'] or '—' }}</td>
+          <td>
+            <div class="button-row wrap">
+              {% if offer['status'] in ['open', 'taken'] %}
+                <form method="post" action="{{ url_for('admin_close_offer', offer_id=offer['id']) }}" onsubmit="return confirm('¿Cerrar esta oferta? Si está tomada, se paga desde tesorería.');">
+                  <button type="submit">Cerrar</button>
+                </form>
+                <form method="post" action="{{ url_for('admin_cancel_offer', offer_id=offer['id']) }}" onsubmit="return confirm('¿Cancelar esta oferta?');">
+                  <button type="submit" class="danger-btn">Cancelar</button>
+                </form>
+              {% else %}
+                <span class="muted">Sin acciones</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5">Todavía no hay ofertas públicas cargadas.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Interventores</h2>
+    <p class="muted">Podés tener uno o dos interventores activos. Cada uno firma con su propia cuenta y sus comentarios quedan visibles en contratos e historiales.</p>
+    <div class="summary-badges wrap">
+      <span class="badge large">Activos: {{ active_interventor_count }}/2</span>
+    </div>
+    <div class="table-wrap top-gap">
+      <table class="compact-table">
+        <tr><th>Usuario</th><th>Estudiante vinculado</th><th>Estado</th><th>Acción</th></tr>
+        {% for item in interventor_users %}
+          <tr>
+            <td>{{ item['username'] }}</td>
+            <td>{% if item['student_name'] %}{{ item['student_name'] }}{% if item['student_course'] %} · {{ item['student_course'] }}{% endif %}{% else %}<span class="muted">sin vínculo</span>{% endif %}</td>
+            <td>
+              {% if item['assignment_active'] %}<span class="badge">activo</span>{% else %}<span class="badge">inactivo</span>{% endif %}
+            </td>
+            <td>
+              <form method="post" action="{{ url_for('admin_update_interventor', user_id=item['user_id']) }}" class="inline-grid member-edit-form">
+                <select name="student_id">
+                  <option value="">Sin vínculo</option>
+                  {% for student in available_interventor_students %}
+                    <option value="{{ student['id'] }}" {% if item['student_id'] == student['id'] %}selected{% endif %}>{{ student['full_name'] }}{% if student['course'] %} · {{ student['course'] }}{% endif %}</option>
+                  {% endfor %}
+                </select>
+                <label class="checkbox-row small"><input type="checkbox" name="assignment_active" {% if item['assignment_active'] %}checked{% endif %}> activo</label>
+                <button type="submit">Guardar</button>
+              </form>
+              <div class="top-gap small">
+                {% if item['review_count'] or item['last_signature_refs'] %}
+                  <span class="muted small">Tiene historial ({{ item['review_count'] }} revisiones, {{ item['last_signature_refs'] }} cierres). Solo se puede desactivar.</span>
+                {% else %}
+                  <form method="post" action="{{ url_for('admin_delete_interventor', user_id=item['user_id']) }}" onsubmit="return confirm('¿Seguro que querés borrar esta cuenta de interventor?');">
+                    <button type="submit" class="danger-btn">Borrar cuenta</button>
+                  </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4">Todavía no hay cuentas de interventor creadas.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+    <hr class="divider">
+    <h3>Crear cuenta de interventor</h3>
+    <form method="post" action="{{ url_for('admin_create_interventor') }}" class="form-grid">
+      <label>Estudiante vinculado
+        <select name="student_id">
+          <option value="">Sin vínculo</option>
+          {% for student in available_interventor_students %}
+            <option value="{{ student['id'] }}">{{ student['full_name'] }}{% if student['course'] %} · {{ student['course'] }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Usuario
+        <input type="text" name="username" required>
+      </label>
+      <label>Contraseña
+        <input type="text" name="password" required>
+      </label>
+      <label class="checkbox-row"><input type="checkbox" name="active_now" checked> Activar ahora</label>
+      <button type="submit">Crear interventor</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Equipos</h2>
+    <table>
+      <tr>
+        <th>ID</th><th>Nombre</th><th>Tipo</th><th>Saldo</th><th>Integrantes</th><th>Login</th><th>Estado</th>
+      </tr>
+      {% for team in teams %}
+        <tr>
+          <td>{{ team['id'] }}</td>
+          <td><a href="{{ url_for('admin_team_detail', team_id=team['id']) }}">{{ team['name'] }}</a></td>
+          <td><span class="badge">{{ team['team_type'] }}</span></td>
+          <td>{{ team['wallet_balance'] }}</td>
+          <td>{{ team['member_count'] }}</td>
+          <td>{{ team['login_username'] or '—' }}</td>
+          <td>{% if team['active'] %}activo{% else %}inactivo{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Movimientos recientes</h2>
+    <table>
+      <tr><th>ID</th><th>Tipo</th><th>Monto</th><th>Origen</th><th>Destino</th><th>Actor</th></tr>
+      {% for tr in recent_transactions %}
+        <tr>
+          <td>{{ tr['id'] }}</td>
+          <td>{{ tr['transaction_type'] }}</td>
+          <td>{{ tr['amount'] }}</td>
+          <td>{% if tr['from_owner_type'] == 'team' %}{{ tr['from_team_name'] }}{% elif tr['from_owner_type'] == 'treasury' %}Tesorería{% else %}—{% endif %}</td>
+          <td>{% if tr['to_owner_type'] == 'team' %}{{ tr['to_team_name'] }}{% elif tr['to_owner_type'] == 'treasury' %}Tesorería{% else %}—{% endif %}</td>
+          <td>{{ tr['actor_username'] or 'sistema' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6">Todavía no hay movimientos.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Bitácora del sistema</h2>
+    <table>
+      <tr><th>ID</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>Detalle</th></tr>
+      {% for item in audit_items %}
+        <tr>
+          <td>{{ item['id'] }}</td>
+          <td>{{ item['username'] or 'sistema' }}</td>
+          <td>{{ item['action'] }}</td>
+          <td>{{ item['entity_type'] }}{% if item['entity_id'] %} #{{ item['entity_id'] }}{% endif %}</td>
+          <td>{{ item['details'] }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5">Todavía no hay eventos registrados.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Revisiones del interventor</h2>
+    <table>
+      <tr><th>Contrato</th><th>Etapa</th><th>Decisión</th><th>Interventor</th><th>Comentario</th></tr>
+      {% for review in recent_reviews %}
+        <tr>
+          <td>#{{ review['contract_id'] }} · {{ review['client_name'] or review['robotics_name'] }} → {{ review['provider_name'] or review['development_name'] }}</td>
+          <td>{{ review['review_stage'] }}</td>
+          <td>{{ review['decision'] }}</td>
+          <td>{{ review['interventor_username'] }}</td>
+          <td>{{ review['comment'] }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5">Todavía no hay revisiones.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Entregas recientes</h2>
+      <a class="btn-link secondary" href="{{ url_for('admin_deliveries') }}">Historial completo</a>
+    </div>
+    <table>
+      <tr><th>Entrega</th><th>Equipo proveedor</th><th>Contenido</th><th>Ver</th></tr>
+      {% for delivery in recent_deliveries %}
+        <tr>
+          <td>#{{ delivery['id'] }} · contrato #{{ delivery['contract_id'] }}</td>
+          <td>{{ delivery['provider_name'] or delivery['development_name'] }}</td>
+          <td>
+            <div class="chip-row">
+              {% if delivery['has_code'] %}<span class="badge">código</span>{% endif %}
+              {% if delivery['has_link'] %}<span class="badge">link</span>{% endif %}
+              {% if delivery['has_file'] %}<span class="badge">archivo</span>{% endif %}
+            </div>
+          </td>
+          <td><a href="{{ url_for('admin_delivery_detail', delivery_id=delivery['id']) }}">abrir</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4">Todavía no hay entregas.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+{% endblock %}

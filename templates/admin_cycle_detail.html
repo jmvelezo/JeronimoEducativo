@@ -1,0 +1,321 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>{{ cycle['name'] }}</h1>
+    <p class="muted">Vista completa del ciclo: equipos implicados, contratos, recompensas, movimientos de JeroCoin, entregas y revisiones.</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('admin_cycle_center') }}">Volver al centro de ciclos</a>
+    <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Equipos</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Estado general</h2>
+    <div class="kv-list compact">
+      <div><strong>ID:</strong> {{ cycle['id'] }}</div>
+      <div><strong>Estado:</strong> <span class="badge">{{ cycle_state }}</span></div>
+      <div><strong>Inicio estimado:</strong> {{ cycle['start_date'] or '—' }}</div>
+      <div><strong>Fin estimado:</strong> {{ cycle['end_date'] or '—' }}</div>
+      <div><strong>Equipos vinculados:</strong> {{ cycle['linked_team_count'] }}</div>
+      <div><strong>Equipos aún activos:</strong> {{ cycle['active_linked_team_count'] }}</div>
+      <div><strong>Contratos:</strong> {{ cycle['contract_count'] }}</div>
+      <div><strong>Recompensas:</strong> {{ cycle['reward_count'] }}</div>
+      <div><strong>Liquidaciones:</strong> {{ cycle['run_count'] }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Resumen económico</h2>
+    {% if settings %}
+      <div class="kv-list compact">
+        <div><strong>Costo base:</strong> {{ settings['base_cost'] }} JeroCoin</div>
+        <div><strong>Costo por integrante:</strong> {{ settings['cost_per_member'] }} JeroCoin</div>
+        <div><strong>Sobrecosto por 2 proyectos:</strong> {{ settings['second_project_surcharge'] }} JeroCoin</div>
+        <div><strong>Precio base del contrato:</strong> {{ settings['contract_price'] }} JeroCoin</div>
+      </div>
+    {% else %}
+      <p class="muted">No hay configuración económica registrada.</p>
+    {% endif %}
+    {% if run %}
+      <hr class="divider">
+      <div class="kv-list compact">
+        <div><strong>Liquidado el:</strong> {{ run['executed_at'] }}</div>
+        <div><strong>Ejecutado por:</strong> {{ run['executed_by_username'] or 'sistema' }}</div>
+        <div><strong>Mantenimiento total:</strong> {{ run['maintenance_total'] }}</div>
+        <div><strong>Cargos específicos:</strong> {{ run['custom_total'] }}</div>
+        <div><strong>Notas:</strong> {{ run['notes'] or '—' }}</div>
+      </div>
+    {% elif cycle_state == 'activo' %}
+      <hr class="divider">
+      <p class="muted">Este ciclo sigue activo. La proyección de cobro está más abajo.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Equipos de robótica implicados</h2>
+    <div class="roster-list">
+      {% for team in participant_groups['robotica'] %}
+        <div class="roster-item stack-on-mobile">
+          <div>
+            <strong><a href="{{ url_for('admin_team_detail', team_id=team['id']) }}">{{ team['name'] }}</a></strong>
+            <div class="muted">Integrantes: {{ team['member_count'] }} · Saldo: {{ team['wallet_balance'] }} JeroCoin</div>
+          </div>
+          {% if team['active'] %}
+            <span class="badge">activo</span>
+          {% else %}
+            <span class="badge">archivado</span>
+          {% endif %}
+        </div>
+      {% else %}
+        <p class="muted">No hubo equipos de robótica vinculados.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Equipos de desarrollo implicados</h2>
+    <div class="roster-list">
+      {% for team in participant_groups['desarrollo'] %}
+        <div class="roster-item stack-on-mobile">
+          <div>
+            <strong><a href="{{ url_for('admin_team_detail', team_id=team['id']) }}">{{ team['name'] }}</a></strong>
+            <div class="muted">Integrantes: {{ team['member_count'] }} · Saldo: {{ team['wallet_balance'] }} JeroCoin · Máx. contratos: {{ team['max_contracts'] }}</div>
+          </div>
+          {% if team['active'] %}
+            <span class="badge">activo</span>
+          {% else %}
+            <span class="badge">archivado</span>
+          {% endif %}
+        </div>
+      {% else %}
+        <p class="muted">No hubo equipos de desarrollo vinculados.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+{% if development_projection %}
+<section class="card">
+  <h2>Proyección de cobro del ciclo activo</h2>
+  <div class="table-wrap">
+    <table class="compact-table min-cycle-table">
+      <tr>
+        <th>Equipo</th><th>Saldo actual</th><th>Integrantes</th><th>Proyectos activos</th><th>Mantenimiento</th><th>Extra pendiente</th><th>Total proyectado</th>
+      </tr>
+      {% for row in development_projection %}
+        <tr>
+          <td>{{ row['name'] }}</td>
+          <td>{{ row['wallet_balance'] }}</td>
+          <td>{{ row['member_count'] }}</td>
+          <td>{{ row['active_projects'] }}</td>
+          <td>{{ row['maintenance_amount'] }}</td>
+          <td>{{ row['pending_extra'] }}</td>
+          <td><strong>{{ row['projected_total'] }}</strong></td>
+        </tr>
+      {% endfor %}
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<div class="grid two">
+  <section class="card">
+    <h2>Contratos del ciclo</h2>
+    <div class="table-wrap">
+      <table class="compact-table">
+        <tr><th>ID</th><th>Flujo</th><th>Portfolio</th><th>Monto</th><th>Estado</th><th>Seguimiento</th><th>Firma / comentario</th><th>Acción</th></tr>
+        {% for contract in contracts %}
+          <tr>
+            <td>#{{ contract['id'] }}</td>
+            <td>{{ contract['client_name'] or contract['robotics_name'] }} → {{ contract['provider_name'] or contract['development_name'] }}</td>
+            <td>{{ contract['portfolio_title'] or '—' }}</td>
+            <td>{{ contract['requested_amount'] }}</td>
+            <td>{{ contract['status'] }}</td>
+            <td>
+              Entregas: {{ contract['delivery_count'] }}<br>
+              Revisiones: {{ contract['review_count'] }}<br>
+              {% if contract['last_delivery_at'] %}
+                <span class="muted">Última entrega: {{ contract['last_delivery_at'] }}</span>
+              {% else %}
+                <span class="muted">Sin entregas todavía</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if contract['last_interventor_username'] %}
+                <strong>{{ contract['last_interventor_username'] }}</strong><br>
+                <span class="muted">{{ contract['last_interventor_action'] or 'firma' }} · {{ contract['last_interventor_signed_at'] or '—' }}</span><br>
+                {{ contract['last_interventor_comment'] or 'Sin comentario' }}
+              {% else %}
+                <span class="muted">Sin firma todavía</span>
+              {% endif %}
+            </td>
+            <td><a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=contract['id']) }}">Ver detalle</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8">No hubo contratos en este ciclo.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Recompensas al equipo cliente</h2>
+    <div class="table-wrap">
+      <table class="compact-table">
+        <tr><th>Equipo</th><th>Monto</th><th>Motivo</th><th>Actor</th><th>Fecha</th></tr>
+        {% for reward in rewards %}
+          <tr>
+            <td>{{ reward['team_name'] }}</td>
+            <td>{{ reward['amount'] }}</td>
+            <td>{{ reward['reason'] }}</td>
+            <td>{{ reward['actor_username'] or 'sistema' }}</td>
+            <td>{{ reward['created_at'] }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">No hubo recompensas registradas.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Movimientos de JeroCoin del ciclo</h2>
+  <p class="muted">Acá se ven solo los movimientos que quedaron asociados formalmente a este ciclo: reservas, pagos, devoluciones, recompensas y cobros de mantenimiento o cargos específicos.</p>
+  <div class="summary-badges wrap">
+    <span class="badge large">Movimientos: {{ transaction_totals['tx_count'] or 0 }}</span>
+    <span class="badge large">Volumen total: {{ transaction_totals['total_amount'] or 0 }} JeroCoin</span>
+    {% for row in transaction_summary %}
+      <span class="badge">{{ row['transaction_type'] }}: {{ row['tx_count'] }} · {{ row['total_amount'] }}</span>
+    {% endfor %}
+  </div>
+  <div class="table-wrap top-gap">
+    <table class="compact-table">
+      <tr><th>ID</th><th>Tipo</th><th>Desde</th><th>Hacia</th><th>Monto</th><th>Actor</th><th>Descripción</th><th>Fecha</th></tr>
+      {% for tx in cycle_transactions %}
+        <tr>
+          <td>#{{ tx['id'] }}</td>
+          <td>{{ tx['transaction_type'] }}</td>
+          <td>
+            {% if tx['from_owner_type'] == 'team' %}
+              {{ tx['from_team_name'] }}
+            {% elif tx['from_owner_type'] == 'treasury' %}
+              Tesorería
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if tx['to_owner_type'] == 'team' %}
+              {{ tx['to_team_name'] }}
+            {% elif tx['to_owner_type'] == 'treasury' %}
+              Tesorería
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>{{ tx['amount'] }}</td>
+          <td>{{ tx['actor_username'] or 'sistema' }}</td>
+          <td>{{ tx['description'] or '—' }}</td>
+          <td>{{ tx['created_at'] }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8">Todavía no hay movimientos asociados a este ciclo.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Cargos específicos del ciclo</h2>
+    <div class="table-wrap">
+      <table class="compact-table">
+        <tr><th>Equipo</th><th>Monto</th><th>Motivo</th><th>Estado</th><th>Fecha</th></tr>
+        {% for charge in charges %}
+          <tr>
+            <td>{{ charge['team_name'] }}</td>
+            <td>{{ charge['amount'] }}</td>
+            <td>{{ charge['reason'] }}</td>
+            <td>{{ charge['status'] }}</td>
+            <td>{{ charge['created_at'] }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">No hay cargos específicos para este ciclo.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Entregas y revisiones</h2>
+    <div class="table-wrap">
+      <table class="compact-table">
+        <tr><th>Entrega</th><th>Flujo</th><th>Contenido</th><th>Estado</th><th>Acción</th><th>Fecha</th></tr>
+        {% for delivery in deliveries %}
+          <tr>
+            <td>#{{ delivery['id'] }}</td>
+            <td>{{ delivery['client_name'] or delivery['robotics_name'] }} → {{ delivery['provider_name'] or delivery['development_name'] }}</td>
+            <td>
+              {% if delivery['has_code'] %}<span class="badge">código</span>{% endif %}
+              {% if delivery['has_link'] %}<span class="badge">link</span>{% endif %}
+              {% if delivery['has_file'] %}<span class="badge">archivo</span>{% endif %}
+            </td>
+            <td>{{ delivery['status'] }}</td>
+            <td><a class="btn-link secondary" href="{{ url_for('admin_delivery_detail', delivery_id=delivery['id']) }}">Ver entrega</a></td>
+            <td>{{ delivery['submitted_at'] }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">No hay entregas registradas.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <hr class="divider">
+    <h3>Últimas revisiones</h3>
+    <div class="table-wrap">
+      <table class="compact-table">
+        <tr><th>Flujo</th><th>Etapa</th><th>Decisión</th><th>Interventor</th><th>Acción</th><th>Fecha</th></tr>
+        {% for review in reviews %}
+          <tr>
+            <td>{{ review['client_name'] or review['robotics_name'] }} → {{ review['provider_name'] or review['development_name'] }}</td>
+            <td>{{ review['review_stage'] }}</td>
+            <td>{{ review['decision'] }}</td>
+            <td>{{ review['interventor_username'] }}</td>
+            <td><a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=review['contract_id']) }}">Ver contrato</a></td>
+            <td>{{ review['signed_at'] }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">No hay revisiones registradas.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Acciones sobre este ciclo</h2>
+  <p class="muted">
+    {% if can_delete %}
+      Este ciclo cumple las condiciones para borrarse desde el centro de ciclos.
+    {% elif cycle_state == 'finalizado' %}
+      Este ciclo todavía conserva equipos activos vinculados, por eso no se puede borrar todavía.
+    {% else %}
+      Mientras el ciclo esté en borrador o activo, la gestión principal sigue estando en el centro de ciclos.
+    {% endif %}
+  </p>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('admin_cycle_center') }}">Volver al centro</a>
+    {% if cycle_state == 'finalizado' and can_delete %}
+      <form method="post" action="{{ url_for('admin_delete_cycle', cycle_id=cycle['id']) }}">
+        <button type="submit" class="danger-btn">Borrar ciclo</button>
+      </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

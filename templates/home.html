@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card landing-hero">
+  <div class="landing-hero-copy">
+    <span class="badge large">JeroCoin</span>
+    <h1>Equipos, puntajes y desafíos en una sola pantalla</h1>
+    <p>Acá pueden ver los equipos por curso, comparar su puntaje visual y entrar después al sistema para trabajar contratos, portfolios, entregas y revisiones. El ranking ahora mezcla saldo, proyectos completados y ajustes por devoluciones o cancelaciones para reflejar mejor el recorrido de cada equipo.</p>
+    <div class="chip-row top-gap">
+      <span class="badge">{{ points_rule }}</span>
+      <span class="badge">Logos + ranking por curso</span>
+      <span class="badge">Proyectos exitosos y devoluciones incluidos</span>
+      <a class="btn-link secondary" href="#acceso">Ir al acceso</a>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <div>
+      <h2>Equipos por curso</h2>
+      <p class="muted">La vista principal separa por curso. Acá no importa si el equipo es de robótica o de desarrollo: primero aparece su curso, su logo y un puntaje que combina saldo disponible, proyectos cerrados con éxito y ajustes por devoluciones o cancelaciones.</p>
+    </div>
+  </div>
+
+  {% for section in course_sections %}
+    <div class="course-group">
+      <div class="course-group-head">
+        <h3>{{ section.course_label }}</h3>
+        <span class="badge">{{ section.teams|length }} equipos</span>
+      </div>
+      <div class="landing-team-grid">
+        {% for team in section.teams %}
+          <article class="landing-team-card">
+            <div class="landing-team-top">
+              <div class="team-logo-wrap">
+                {% if team['logo_stored_filename'] %}
+                  <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+                {% elif team['preview_gallery_image'] %}
+                  <img class="team-logo-img" src="{{ url_for('public_team_gallery_file', stored_filename=team['preview_gallery_image']) }}" alt="Vista del equipo {{ team['name'] }}">
+                {% else %}
+                  <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
+                {% endif %}
+              </div>
+              <div>
+                <strong>{{ team['name'] }}</strong>
+                <div class="muted">{{ team['course_label'] }}</div>
+              </div>
+            </div>
+            <p>{{ team['profile_blurb'] or 'Todavía no cargó una presentación breve.' }}</p>
+            <div class="landing-score-row">
+              <span class="muted">Puntaje</span>
+              <strong>{{ team['score'] }} pts</strong>
+            </div>
+            <div class="muted tiny top-gap">
+              Saldo: {{ team['base_points'] }} pts
+              {% if team['invested_points'] %} · Inversión acumulada: {{ team['invested_points'] }} pts{% endif %}
+              {% if team['success_count'] %} · Proyectos cerrados: {{ team['success_count'] }}{% endif %}
+              {% if team['return_count'] %} · Devoluciones: {{ team['return_count'] }}{% endif %}
+              {% if team['cancellation_count'] %} · Cancelaciones: {{ team['cancellation_count'] }}{% endif %}
+            </div>
+          </article>
+        {% else %}
+          <p class="muted">No hay equipos cargados en este curso todavía.</p>
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">Todavía no hay equipos activos para mostrar.</p>
+  {% endfor %}
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <div>
+      <h2>Ranking general</h2>
+      <p class="muted">El ranking toma como base el saldo disponible, pero además conserva la inversión de robótica en proyectos exitosos, suma bonificaciones por cierres correctos y descuenta puntos por devoluciones o cancelaciones.</p>
+    </div>
+  </div>
+  <div class="ranking-list">
+    {% for team in ranking %}
+      <div class="ranking-row">
+        <div class="ranking-left">
+          <span class="ranking-position">{{ loop.index }}</span>
+          <div class="team-logo-wrap smallish">
+            {% if team['logo_stored_filename'] %}
+              <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+            {% elif team['preview_gallery_image'] %}
+              <img class="team-logo-img" src="{{ url_for('public_team_gallery_file', stored_filename=team['preview_gallery_image']) }}" alt="Vista del equipo {{ team['name'] }}">
+            {% else %}
+              <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
+            {% endif %}
+          </div>
+          <div>
+            <strong>{{ team['name'] }}</strong>
+            <div class="muted">{{ team['course_label'] }}</div>
+          </div>
+        </div>
+        <div class="ranking-score">{{ team['score'] }} pts</div>
+      </div>
+      <div class="muted tiny ranking-breakdown">
+        Saldo: {{ team['base_points'] }} · Éxitos: +{{ team['success_bonus'] }}
+        {% if team['invested_points'] %} · Inversión: +{{ team['invested_points'] }}{% endif %}
+        {% if team['return_penalty'] %} · Devoluciones: -{{ team['return_penalty'] }}{% endif %}
+        {% if team['cancellation_penalty'] %} · Cancelaciones: -{{ team['cancellation_penalty'] }}{% endif %}
+      </div>
+    {% else %}
+      <p class="muted">Todavía no hay ranking disponible.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card narrow login-anchor" id="acceso">
+  <h2>Ingresar al sistema</h2>
+  <p class="muted">El acceso quedó abajo para que primero se vea la actividad, los equipos y el ranking. Después, desde acá, cada cuenta entra a su panel de trabajo.</p>
+  <form method="post" action="{{ url_for('login') }}" class="form-grid">
+    <label>Usuario
+      <input type="text" name="username" required>
+    </label>
+    <label>Contraseña
+      <input type="password" name="password" required>
+    </label>
+    <button type="submit">Entrar</button>
+  </form>
+</section>
+{% endblock %}

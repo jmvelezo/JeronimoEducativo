@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Reglas del equipo · {{ team['name'] }}</h1>
+    <p class="muted">Esta página resume cómo se juega y cómo se trabaja dentro de JeroCoin, explicada de forma simple para el equipo.</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('dashboard') }}">Volver al panel</a>
+  </div>
+</div>
+
+<section class="card team-hero-card">
+  <div class="team-hero-inner">
+    <div class="team-logo-wrap large">
+      {% if team['logo_stored_filename'] %}
+        <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+      {% else %}
+        <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
+      {% endif %}
+    </div>
+    <div>
+      <span class="badge">Reglas del juego</span>
+      <h2>{{ team['name'] }}</h2>
+      <p>{{ team['profile_blurb'] or 'Este equipo todavía no cargó una presentación breve, pero igual puede seguir estas reglas para trabajar mejor.' }}</p>
+      <div class="chip-row top-gap">
+        <span class="badge">{{ points_rule }}</span>
+        <span class="badge">Contrato base: {{ contract_price }} JeroCoin</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Reglas generales</h2>
+  <ol class="simple-list">
+    <li>La idea del sistema no es solo juntar monedas: también importa trabajar ordenados, cumplir fechas y explicar bien lo que hace cada equipo.</li>
+    <li>Los JeroCoin siguen siendo la moneda del sistema, pero el puntaje ahora mira más cosas: saldo disponible, proyectos completados, inversión que ya hizo robótica y descuentos por devoluciones o cancelaciones.</li>
+    <li>Siempre que aparezca una firma del interventor, conviene leerla completa. Esa firma explica si algo fue aprobado, corregido, pausado o cerrado.</li>
+    <li>Si el equipo tiene dudas, tiene que dejarlas por escrito en comentarios, mensajes del contrato o en el material que suba.</li>
+    <li>Respetar tiempos y acuerdos es parte de la actividad. No alcanza con que algo “más o menos funcione”. También tiene que poder explicarse.</li>
+  </ol>
+</section>
+
+{% if role_mode == 'robotica' %}
+<section class="card">
+  <h2>Reglas para equipos de robótica</h2>
+  <ol class="simple-list">
+    <li>Antes de reservar un contrato, comparen portfolios, estilos de trabajo y galería del equipo desarrollador.</li>
+    <li>Cuando pidan un contrato, expliquen bien qué necesitan: escriban un mensaje claro, suban un archivo si hace falta y pongan una fecha de entrega razonable.</li>
+    <li>La reserva aparta <strong>{{ contract_price }} JeroCoin</strong>. Esa moneda queda guardada hasta que el interventor revise el proceso.</li>
+    <li>Si cambian de idea, pueden cancelar el contrato, pero tienen que explicar el motivo. Cancelar sin explicación rompe la organización del ciclo.</li>
+    <li>Si la fecha se vence, el contrato no desaparece: queda pausado y pasa al interventor para decidir si se reactiva o se cancela.</li>
+    <li>Cuando reciban una entrega, miren la firma del interventor para entender si fue aprobada, corregida o cerrada con observaciones.</li>
+  </ol>
+</section>
+{% elif role_mode == 'desarrollo' %}
+<section class="card">
+  <h2>{% if team['service_track'] == 'web_html' %}Reglas para equipos web / HTML{% else %}Reglas para equipos de desarrollo{% endif %}</h2>
+  <ol class="simple-list">
+    <li>El portfolio tiene que ser claro, visual y honesto. Muestren bien qué sabe hacer el equipo y cómo trabaja.</li>
+    <li>{% if team['service_track'] == 'web_html' %}Aunque el producto sea una página simple, también tiene que poder explicarse: estructura, secciones, diseño y decisiones visuales.{% else %}No alcanza con subir código: también hay que poder explicarlo. Si el interventor pide correcciones, hay que responder con claridad.{% endif %}</li>
+    <li>Las entregas pueden incluir texto, archivo o link. Lo ideal es dejar siempre una nota para que el otro equipo entienda qué se está entregando.</li>
+    <li>Los primeros 4 integrantes se cobran de forma lineal. Desde el 5° en adelante, cada integrante extra suma un costo mayor, así que conviene organizar equipos que puedan trabajar bien sin crecer de más.</li>
+    <li>Si la fecha prometida se vence, el contrato queda pausado hasta que el interventor decida qué hacer. Durante esa pausa no conviene seguir como si nada hubiera pasado.</li>
+    <li>Cuando un contrato aparece como <strong>closed</strong>, igual sigue siendo importante mirar las firmas y comentarios, porque ahí queda registrado quién lo aprobó y por qué.</li>
+  </ol>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Cómo leer puntajes y saldos</h2>
+  <p>Para que el ranking sea más justo, el sistema usa una traducción visual y algunas reglas extra:</p>
+  <div class="warning-box top-gap">
+    <strong>{{ points_rule }}</strong>
+  </div>
+  <p class="top-gap">La base sigue siendo la misma: cada JeroCoin disponible vale {{ points_per_panchicoin }} puntos. Pero además, los proyectos cerrados con éxito suman <strong>{{ success_project_bonus }} puntos</strong> para ambos equipos. Si un trabajo vuelve con correcciones, descuenta <strong>{{ return_penalty }} puntos</strong>. Si termina cancelado, descuenta <strong>{{ cancellation_penalty }} puntos</strong>.</p>
+  <p>En robótica hay una regla extra para que usar las monedas no baje injustamente el ranking: los JeroCoin invertidos en proyectos que realmente se cerraron con éxito siguen contando en el puntaje, aunque ya no estén disponibles en la billetera.</p>
+</section>
+{% endblock %}

@@ -1,0 +1,214 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Gestión de equipos</h1>
+<p class="muted">Acá está la parte operativa pesada. {% if current_user['role'] == 'admin' %}Podés crear equipos, darles login, sumar estudiantes, asignarlos y después entrar a cada equipo para administrar todo desde su propia página.{% else %}Entraste en modo de visualización como interventor: podés recorrer equipos, integrantes, ciclos y contratos, pero no editar nada.{% endif %} Para evitar confusión, el alta ahora muestra <strong>curso</strong>, <strong>función económica</strong> y <strong>servicio principal</strong>. El tipo técnico viejo sigue existiendo por debajo solo para compatibilidad.</p>
+
+{% if global_open_cycle %}
+<div class="flash warning">Hay un ciclo o borrador abierto: <strong>{{ global_open_cycle['name'] }}</strong>. Mientras exista, la composición de equipos queda bloqueada y tampoco se pueden borrar equipos.</div>
+{% endif %}
+
+{% if current_user['role'] == 'admin' %}
+<div class="grid two">
+  <section class="card">
+    <h2>Crear equipo</h2>
+    <form method="post" action="{{ url_for('admin_create_team') }}" class="form-grid">
+      <input type="hidden" name="next" value="{{ url_for('admin_teams') }}">
+      <label>Nombre del equipo
+        <input type="text" name="name" required>
+      </label>
+      <label>Curso visible del equipo
+        <input type="text" name="course_label" placeholder="Ej. 1A, 3° o 7B">
+      </label>
+      <label>Función en la economía
+        <select name="market_role">
+          {% for key, label in market_role_options.items() %}
+            <option value="{{ key }}" {% if key == 'both' %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Servicio principal
+        <select name="service_track" id="create-service-track">
+          <option value="robotica">{{ service_track_options['robotica'] }}</option>
+          <option value="programacion" selected>{{ service_track_options['programacion'] }}</option>
+          <option value="web_html">{{ service_track_options['web_html'] }}</option>
+        </select>
+      </label>
+      <p class="muted">El sistema ya no te pide elegir el tipo técnico viejo. Si el servicio principal es hardware / robótica, por debajo se crea como equipo de robótica. Si es programación o web / HTML, por debajo se crea como equipo de desarrollo.</p>
+      <label>Máximo de contratos
+        <input type="number" name="max_contracts" min="1" value="2" required>
+      </label>
+      <label>Saldo inicial
+        <input type="number" name="initial_balance" min="0" value="0">
+      </label>
+      <label>Notas
+        <textarea name="notes" rows="3"></textarea>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" name="create_login"> Crear login del equipo
+      </label>
+      <div class="grid two compact-grid">
+        <label>Usuario
+          <input type="text" name="username">
+        </label>
+        <label>Contraseña
+          <input type="text" name="password">
+        </label>
+      </div>
+      <button type="submit">Crear equipo</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Agregar estudiante</h2>
+    <form method="post" action="{{ url_for('admin_create_student') }}" class="form-grid">
+      <input type="hidden" name="next" value="{{ url_for('admin_teams') }}">
+      <label>Nombre y apellido
+        <input type="text" name="full_name" required>
+      </label>
+      <label>Curso
+        <input type="text" name="course" placeholder="Ej. 1A o 6B">
+      </label>
+      <button type="submit">Agregar estudiante</button>
+    </form>
+
+    <hr class="divider">
+
+    <h3>Asignar estudiante existente</h3>
+    <form method="post" action="{{ url_for('admin_add_member') }}" class="form-grid" id="assign-member-form">
+      <input type="hidden" name="next" value="{{ url_for('admin_teams') }}">
+      <label>Estudiante
+        <select name="student_id">
+          {% for student in students %}
+            <option value="{{ student['id'] }}">{{ student['full_name'] }}{% if student['current_team'] %} · ya está en {{ student['current_team'] }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Equipo
+        <select name="team_id" id="team-selector">
+          {% for team in teams %}
+            <option value="{{ team['id'] }}" data-team-type="{{ team['team_type'] }}">{{ team['name'] }} · {{ team['course_label'] or 'Sin curso' }} · {{ market_role_options.get(team['market_role'] or 'both', team['market_role'] or 'both') }} · {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Rol interno
+        <select name="internal_role" id="role-selector"></select>
+      </label>
+      <p class="muted">Los roles internos siguen adaptándose al tipo técnico oculto del equipo. En equipos de desarrollo puede haber varios programadores o contables, pero solo un COO activo.</p>
+      {% if global_open_cycle %}
+      <p class="muted">No se pueden asignar integrantes mientras exista un ciclo o borrador abierto.</p>
+      <button type="submit" disabled>Asignar integrante</button>
+      {% else %}
+      <button type="submit">Asignar integrante</button>
+      {% endif %}
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Estudiantes sin equipo</h2>
+  <p class="muted">Desde acá podés borrar del sistema a estudiantes que no tengan asignación activa en ningún equipo.</p>
+  <table>
+    <tr><th>Nombre</th><th>Curso</th><th>Acción</th></tr>
+    {% set ns = namespace(count=0) %}
+    {% for student in students %}
+      {% if not student['current_team'] %}
+      {% set ns.count = ns.count + 1 %}
+      <tr>
+        <td>{{ student['full_name'] }}</td>
+        <td>{{ student['course'] or '—' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('admin_delete_student', student_id=student['id']) }}">
+            <input type="hidden" name="next" value="{{ url_for('admin_teams') }}">
+            <button type="submit" class="danger-btn soft">Borrar del sistema</button>
+          </form>
+        </td>
+      </tr>
+      {% endif %}
+    {% endfor %}
+    {% if ns.count == 0 %}
+      <tr><td colspan="3">No hay estudiantes sueltos para borrar.</td></tr>
+    {% endif %}
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <div class="section-header">
+    <h2>Todos los equipos</h2>
+    <div class="button-row wrap">
+      {% if current_user['role'] == 'admin' %}
+      <a class="btn-link secondary" href="{{ url_for('admin_dashboard') }}">Volver al panel</a>
+      {% else %}
+      <a class="btn-link secondary" href="{{ url_for('interventor_dashboard') }}">Volver al panel interventor</a>
+      {% endif %}
+      <a class="btn-link secondary" href="{{ url_for('admin_cycle_center') }}">Ir a ciclos</a>
+    </div>
+  </div>
+  <div class="team-grid">
+    {% for team in teams %}
+      <article class="card team-card">
+        <div class="section-header">
+          <div>
+            <h3><a href="{{ url_for('admin_team_detail', team_id=team['id']) }}">{{ team['name'] }}</a></h3>
+            <div class="muted">{{ team['course_label'] or 'Sin curso' }} · {{ market_role_options.get(team['market_role'] or 'both', team['market_role'] or 'both') }} · {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }} · {% if team['active'] %}activo{% else %}inactivo{% endif %}</div>
+          </div>
+          <span class="badge">#{{ team['id'] }}</span>
+        </div>
+        <div class="kv-list compact">
+          <div><strong>Curso:</strong> {{ team['course_label'] or 'Sin curso' }}</div>
+          <div><strong>Función:</strong> {{ market_role_options.get(team['market_role'] or 'both', team['market_role'] or 'both') }}</div>
+          <div><strong>Servicio:</strong> {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</div>
+          <div><strong>Saldo:</strong> {{ team['wallet_balance'] }}</div>
+          <div><strong>Integrantes:</strong> {{ team['member_count'] }}</div>
+          <div><strong>Contratos activos:</strong> {{ team['active_contracts'] }}</div>
+          <div><strong>Login:</strong> {{ team['login_username'] or '—' }}</div>
+          {% if team['open_cycle_id'] %}
+            <div><strong>Bloqueado por ciclo:</strong>
+              <a href="{{ url_for('admin_cycle_detail', cycle_id=team['open_cycle_id']) }}">{{ team['open_cycle_name'] }}</a>
+              <span class="badge">{% if team['open_cycle_started'] %}activo{% else %}borrador{% endif %}</span>
+            </div>
+          {% else %}
+            <div><strong>Ciclo abierto:</strong> —</div>
+          {% endif %}
+        </div>
+        <div class="button-row wrap">
+          <a class="btn-link" href="{{ url_for('admin_team_detail', team_id=team['id']) }}">{% if current_user['role'] == 'admin' %}Gestionar equipo{% else %}Ver equipo{% endif %}</a>
+          {% if team['open_cycle_id'] %}
+            <a class="btn-link secondary" href="{{ url_for('admin_cycle_detail', cycle_id=team['open_cycle_id']) }}">Ver ciclo</a>
+          {% endif %}
+        </div>
+      </article>
+    {% else %}
+      <p class="muted">Todavía no hay equipos.</p>
+    {% endfor %}
+  </div>
+</section>
+
+{% if current_user['role'] == 'admin' %}
+<script>
+  const roleOptionsByType = {{ team_role_options|tojson }};
+  const teamSelector = document.getElementById('team-selector');
+  const roleSelector = document.getElementById('role-selector');
+  function refreshRoleOptions() {
+    if (!teamSelector || !roleSelector) return;
+    const selectedOption = teamSelector.options[teamSelector.selectedIndex];
+    const teamType = selectedOption ? selectedOption.dataset.teamType : 'robotica';
+    const roles = roleOptionsByType[teamType] || [];
+    roleSelector.innerHTML = '';
+    roles.forEach((role, index) => {
+      const option = document.createElement('option');
+      option.value = role;
+      option.textContent = role;
+      if (teamType === 'desarrollo' && role === 'programador') option.selected = true;
+      if (teamType === 'robotica' && index === 0) option.selected = true;
+      roleSelector.appendChild(option);
+    });
+  }
+
+  if (teamSelector) {
+    teamSelector.addEventListener('change', refreshRoleOptions);
+    refreshRoleOptions();
+  }
+</script>
+{% endif %}
+{% endblock %}

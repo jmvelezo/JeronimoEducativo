@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Contrato #{{ contract['id'] }}</h1>
+    <p class="muted">Seguimiento fino del contrato: flujo, entregas, revisiones y movimientos de JeroCoin vinculados.</p>
+  </div>
+  <div class="button-row wrap">
+    {% if contract['cycle_id'] %}
+      <a class="btn-link secondary" href="{{ url_for('admin_cycle_detail', cycle_id=contract['cycle_id']) }}">Volver al ciclo</a>
+    {% endif %}
+    <a class="btn-link secondary" href="{{ url_for('admin_cycle_center') }}">Centro de ciclos</a>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Resumen del contrato</h2>
+    <div class="kv-list compact">
+      <div><strong>Ciclo:</strong> {{ contract['cycle_name'] or '—' }}{% if cycle_state %} · <span class="badge">{{ cycle_state }}</span>{% endif %}</div>
+      <div><strong>Equipo cliente:</strong> {{ contract['client_name'] or contract['robotics_name'] }}</div>
+      <div><strong>Equipo proveedor:</strong> {{ contract['provider_name'] or contract['development_name'] }}</div>
+      <div><strong>Línea proveedora:</strong> {{ 'Web / HTML' if (contract['provider_service_track_resolved'] or contract['provider_service_track']) == 'web_html' else ('Programación' if (contract['provider_service_track_resolved'] or contract['provider_service_track']) == 'programacion' else (contract['provider_service_track_resolved'] or contract['provider_service_track'] or '—')) }}</div>
+      <div><strong>Portfolio:</strong> {{ contract['portfolio_title'] or '—' }}</div>
+      <div><strong>Monto pedido:</strong> {{ contract['requested_amount'] }} JeroCoin</div>
+      <div><strong>Reserva actual:</strong> {{ contract['reserved_amount'] }} JeroCoin</div>
+      <div><strong>Pago liberado:</strong> {{ 'sí' if contract['payment_released'] else 'no' }}</div>
+      <div><strong>Estado:</strong> <span class="badge">{{ contract['status'] }}</span></div>
+      <div><strong>Solicitado por:</strong> {{ contract['requested_by_username'] or '—' }}</div>
+      <div><strong>Fecha pedida:</strong> {{ contract['requested_delivery_date'] or '—' }}</div>
+      {% if contract['request_message'] %}<div><strong>Pedido:</strong> {{ contract['request_message'] }}</div>{% endif %}
+      {% if contract['request_stored_filename'] %}<div><strong>Archivo del pedido:</strong> <a href="{{ url_for('download_request_file', stored_filename=contract['request_stored_filename']) }}">{{ contract['request_original_filename'] or 'Descargar archivo' }}</a></div>{% endif %}
+      <div><strong>Creado:</strong> {{ contract['created_at'] }}</div>
+      <div><strong>Activado:</strong> {{ contract['activated_at'] or '—' }}</div>
+      <div><strong>Cerrado:</strong> {{ contract['closed_at'] or '—' }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Lectura rápida</h2>
+    <div class="summary-badges wrap">
+      <span class="badge large">Entregas: {{ deliveries|length }}</span>
+      <span class="badge large">Revisiones: {{ reviews|length }}</span>
+      <span class="badge large">Movimientos: {{ transactions|length }}</span>
+    </div>
+    <p class="muted top-gap">Esta vista sirve para revisar si el contrato recorrió bien todo el circuito: reserva, activación, entrega, validación y pago o devolución.</p>
+  </section>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Entregas</h2>
+    <div class="table-wrap">
+      <table class="compact-table">
+        <tr><th>ID</th><th>Contenido</th><th>Estado</th><th>Actor</th><th>Acción</th><th>Fecha</th></tr>
+        {% for delivery in deliveries %}
+          <tr>
+            <td>#{{ delivery['id'] }}</td>
+            <td>
+              {% if delivery['has_code'] %}<span class="badge">código</span>{% endif %}
+              {% if delivery['has_link'] %}<span class="badge">link</span>{% endif %}
+              {% if delivery['has_file'] %}<span class="badge">archivo</span>{% endif %}
+            </td>
+            <td>{{ delivery['status'] }}</td>
+            <td>{{ delivery['submitted_by'] }}</td>
+            <td><a class="btn-link secondary" href="{{ url_for('admin_delivery_detail', delivery_id=delivery['id']) }}">Ver entrega</a></td>
+            <td>{{ delivery['submitted_at'] }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">No hay entregas registradas.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Revisiones del interventor</h2>
+    <div class="table-wrap">
+      <table class="compact-table">
+        <tr><th>Etapa</th><th>Decisión</th><th>Interventor</th><th>Comentario</th><th>Fecha</th></tr>
+        {% for review in reviews %}
+          <tr>
+            <td>{{ review['review_stage'] }}</td>
+            <td>{{ review['decision'] }}</td>
+            <td>{{ review['interventor_username'] }}</td>
+            <td>{{ review['comment'] }}</td>
+            <td>{{ review['signed_at'] }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">No hay revisiones registradas.</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Movimientos de JeroCoin vinculados a este contrato</h2>
+  <div class="table-wrap">
+    <table class="compact-table">
+      <tr><th>ID</th><th>Tipo</th><th>Desde</th><th>Hacia</th><th>Monto</th><th>Actor</th><th>Descripción</th><th>Fecha</th></tr>
+      {% for tx in transactions %}
+        <tr>
+          <td>#{{ tx['id'] }}</td>
+          <td>{{ tx['transaction_type'] }}</td>
+          <td>
+            {% if tx['from_owner_type'] == 'team' %}
+              {{ tx['from_team_name'] }}
+            {% elif tx['from_owner_type'] == 'treasury' %}
+              Tesorería
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if tx['to_owner_type'] == 'team' %}
+              {{ tx['to_team_name'] }}
+            {% elif tx['to_owner_type'] == 'treasury' %}
+              Tesorería
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>{{ tx['amount'] }}</td>
+          <td>{{ tx['actor_username'] or 'sistema' }}</td>
+          <td>{{ tx['description'] or '—' }}</td>
+          <td>{{ tx['created_at'] }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8">Todavía no hay movimientos asociados a este contrato.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</section>
+{% endblock %}
