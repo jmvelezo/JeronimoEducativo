@@ -1161,6 +1161,22 @@ def home():
     return render_template("home.html", **build_public_home_context())
 
 
+
+
+@app.route("/reglas")
+def project_rules():
+    settings = query_one("SELECT * FROM economic_settings ORDER BY effective_from DESC, id DESC LIMIT 1")
+    return render_template(
+        "project_rules.html",
+        contract_price=settings["contract_price"] if settings else 30,
+        points_rule=build_points_rule_text(),
+        points_per_panchicoin=POINTS_PER_PANCHICOIN,
+        success_project_bonus=SUCCESS_PROJECT_BONUS,
+        return_penalty=RETURN_PENALTY,
+        cancellation_penalty=CANCELLATION_PENALTY,
+    )
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -2725,7 +2741,7 @@ def admin_delete_team(team_id: int):
 
 
 @app.route("/admin/student/create", methods=["POST"])
-@role_required("admin")
+@role_required("admin", "interventor")
 def admin_create_student():
     user = current_user()
     full_name = request.form.get("full_name", "").strip()
@@ -2810,7 +2826,7 @@ def admin_delete_student(student_id: int):
 
 
 @app.route("/admin/member/add", methods=["POST"])
-@role_required("admin")
+@role_required("admin", "interventor")
 def admin_add_member():
     user = current_user()
     team_id = int(request.form.get("team_id"))
@@ -4169,6 +4185,107 @@ def interventor_dashboard():
         pending_delivery=pending_delivery,
         paused_contracts=paused_contracts,
     )
+
+
+@app.route("/interventor/students")
+@role_required("interventor")
+def interventor_students():
+    with get_connection() as conn:
+        open_cycle = any_open_cycle(conn)
+        teams = conn.execute(
+            """
+            SELECT t.*, COALESCE(w.balance, 0) AS wallet_balance,
+                   COUNT(CASE WHEN tm.active = 1 THEN 1 END) AS member_count
+            FROM teams t
+            LEFT JOIN wallets w ON w.owner_type = 'team' AND w.owner_id = t.id
+            LEFT JOIN team_members tm ON tm.team_id = t.id
+            WHERE t.active = 1
+            GROUP BY t.id, w.balance
+            ORDER BY COALESCE(NULLIF(t.course_label, ''), 'Sin curso'), t.service_track, t.name
+            """
+        ).fetchall()
+        available_students = conn.execute(
+            """
+            SELECT s.*
+            FROM students s
+            WHERE s.active = 1 AND NOT EXISTS (
+                SELECT 1 FROM team_members tm WHERE tm.student_id = s.id AND tm.active = 1
+            )
+            ORDER BY s.full_name
+            """
+        ).fetchall()
+        active_members = conn.execute(
+            """
+            SELECT tm.id AS member_id, tm.team_id, tm.student_id, tm.internal_role,
+                   s.full_name, s.course,
+                   t.name AS team_name, t.team_type, t.service_track, t.course_label, t.market_role
+            FROM team_members tm
+            JOIN students s ON s.id = tm.student_id
+            JOIN teams t ON t.id = tm.team_id
+            WHERE tm.active = 1 AND s.active = 1
+            ORDER BY COALESCE(NULLIF(t.course_label, ''), 'Sin curso'), t.name, s.full_name
+            """
+        ).fetchall()
+    return render_template(
+        "interventor_students.html",
+        open_cycle=open_cycle,
+        teams=teams,
+        available_students=available_students,
+        active_members=active_members,
+        team_role_options=ROLE_OPTIONS_BY_TEAM_TYPE,
+        service_track_options=SERVICE_TRACK_OPTIONS,
+        market_role_options=MARKET_ROLE_OPTIONS,
+    )
+
+
+@app.route("/interventor/member/<int:member_id>/move", methods=["POST"])
+@role_required("interventor")
+def interventor_move_member(member_id: int):
+    user = current_user()
+    team_id_raw = (request.form.get("team_id") or "").strip()
+    internal_role = (request.form.get("internal_role") or "").strip()
+    if not team_id_raw:
+        flash("Tenés que elegir un equipo de destino.", "warning")
+        return redirect_back("interventor_students")
+    team_id = int(team_id_raw)
+    with get_connection() as conn:
+        if any_open_cycle(conn):
+            flash("No se pueden mover integrantes mientras exista un ciclo o borrador abierto.", "warning")
+            return redirect_back("interventor_students")
+        member = conn.execute(
+            """
+            SELECT tm.*, s.full_name, t.name AS current_team_name
+            FROM team_members tm
+            JOIN students s ON s.id = tm.student_id
+            JOIN teams t ON t.id = tm.team_id
+            WHERE tm.id = ?
+            """,
+            (member_id,),
+        ).fetchone()
+        if not member:
+            flash("Asignación no encontrada.", "danger")
+            return redirect(url_for("interventor_students"))
+        try:
+            validate_member_role(conn, team_id, internal_role, active=1, exclude_member_id=member_id)
+        except ValueError as exc:
+            flash(str(exc), "danger")
+            return redirect_back("interventor_students")
+        target_team = conn.execute("SELECT name FROM teams WHERE id = ?", (team_id,)).fetchone()
+        conn.execute(
+            "UPDATE team_members SET team_id = ?, internal_role = ?, active = 1 WHERE id = ?",
+            (team_id, internal_role, member_id),
+        )
+        log_action(
+            conn,
+            user["id"],
+            "interventor_move_member",
+            "team_member",
+            member_id,
+            f"student={member['student_id']} from={member['current_team_name']} to={(target_team['name'] if target_team else team_id)} role={internal_role}",
+        )
+        conn.commit()
+    flash("Integrante reasignado correctamente.", "success")
+    return redirect_back("interventor_students")
 
 
 @app.route("/interventor/contracts/<int:contract_id>/activation-review", methods=["POST"])

@@ -3,22 +3,38 @@
 <section class="card landing-hero">
   <div class="landing-hero-copy">
     <span class="badge large">JeroCoin</span>
-    <h1>Equipos, puntajes y desafíos en una sola pantalla</h1>
-    <p>Acá pueden ver los equipos por curso, comparar su puntaje visual y entrar después al sistema para trabajar contratos, portfolios, entregas y revisiones. El ranking ahora mezcla saldo, proyectos completados y ajustes por devoluciones o cancelaciones para reflejar mejor el recorrido de cada equipo.</p>
+    <h1>La liga digital de equipos ya está en marcha</h1>
+    <p>Acá pueden mirar quiénes participan, cómo viene el ranking y qué equipos se están destacando. La idea es que primero vean la actividad del proyecto y después entren al sistema para trabajar.</p>
     <div class="chip-row top-gap">
-      <span class="badge">{{ points_rule }}</span>
-      <span class="badge">Logos + ranking por curso</span>
-      <span class="badge">Proyectos exitosos y devoluciones incluidos</span>
+      <span class="badge">Ranking por cursos</span>
+      <span class="badge">Logos y equipos visibles</span>
+      <span class="badge">Contratos, portfolios y desafíos</span>
+      <a class="btn-link secondary" href="{{ url_for('project_rules') }}">Ver reglas del proyecto</a>
       <a class="btn-link secondary" href="#acceso">Ir al acceso</a>
     </div>
   </div>
+</section>
+
+<section class="card home-intro-grid">
+  <article class="info-tile">
+    <h2>¿Qué se ve acá?</h2>
+    <p class="muted">Esta portada muestra los equipos por curso y el ranking general. Sirve para seguir cómo va la experiencia sin entrar todavía al panel interno.</p>
+  </article>
+  <article class="info-tile">
+    <h2>¿Dónde están las reglas?</h2>
+    <p class="muted">Las reglas completas del proyecto, la explicación del puntaje y el papel del interventor ahora están en una página aparte, escrita de forma más clara y ordenada.</p>
+  </article>
+  <article class="info-tile">
+    <h2>¿Qué hago después?</h2>
+    <p class="muted">Cuando llegue el momento, cada cuenta entra a su espacio para contratar, entregar, revisar, corregir o seguir el estado de sus trabajos.</p>
+  </article>
 </section>
 
 <section class="card">
   <div class="section-header">
     <div>
       <h2>Equipos por curso</h2>
-      <p class="muted">La vista principal separa por curso. Acá no importa si el equipo es de robótica o de desarrollo: primero aparece su curso, su logo y un puntaje que combina saldo disponible, proyectos cerrados con éxito y ajustes por devoluciones o cancelaciones.</p>
+      <p class="muted">Cada curso aparece con sus equipos, su identidad visual y su puntaje actual. La idea es que puedan ubicarse rápido y reconocer a los demás grupos sin llenar la pantalla de datos técnicos.</p>
     </div>
   </div>
 
@@ -48,15 +64,8 @@
             </div>
             <p>{{ team['profile_blurb'] or 'Todavía no cargó una presentación breve.' }}</p>
             <div class="landing-score-row">
-              <span class="muted">Puntaje</span>
+              <span class="muted">Puntaje actual</span>
               <strong>{{ team['score'] }} pts</strong>
-            </div>
-            <div class="muted tiny top-gap">
-              Saldo: {{ team['base_points'] }} pts
-              {% if team['invested_points'] %} · Inversión acumulada: {{ team['invested_points'] }} pts{% endif %}
-              {% if team['success_count'] %} · Proyectos cerrados: {{ team['success_count'] }}{% endif %}
-              {% if team['return_count'] %} · Devoluciones: {{ team['return_count'] }}{% endif %}
-              {% if team['cancellation_count'] %} · Cancelaciones: {{ team['cancellation_count'] }}{% endif %}
             </div>
           </article>
         {% else %}
@@ -73,12 +82,20 @@
   <div class="section-header">
     <div>
       <h2>Ranking general</h2>
-      <p class="muted">El ranking toma como base el saldo disponible, pero además conserva la inversión de robótica en proyectos exitosos, suma bonificaciones por cierres correctos y descuenta puntos por devoluciones o cancelaciones.</p>
+      <p class="muted">Los primeros puestos brillan por su rendimiento y los últimos muestran que todavía tienen terreno para remontar. Pasá el cursor por cada uno para ver el efecto visual.</p>
     </div>
   </div>
   <div class="ranking-list">
+    {% set total_ranking = ranking|length %}
     {% for team in ranking %}
-      <div class="ranking-row">
+      {% set row_classes = ['ranking-row'] %}
+      {% if loop.index == 1 %}{% set _ = row_classes.append('rank-first') %}{% endif %}
+      {% if loop.index == 2 %}{% set _ = row_classes.append('rank-second') %}{% endif %}
+      {% if loop.index == 3 %}{% set _ = row_classes.append('rank-third') %}{% endif %}
+      {% if total_ranking >= 3 and loop.revindex == 1 %}{% set _ = row_classes.append('rank-last') %}{% endif %}
+      {% if total_ranking >= 3 and loop.revindex == 2 %}{% set _ = row_classes.append('rank-penultimate') %}{% endif %}
+      {% if total_ranking >= 3 and loop.revindex == 3 %}{% set _ = row_classes.append('rank-antepenultimate') %}{% endif %}
+      <div class="{{ row_classes|join(' ') }}">
         <div class="ranking-left">
           <span class="ranking-position">{{ loop.index }}</span>
           <div class="team-logo-wrap smallish">
@@ -97,12 +114,6 @@
         </div>
         <div class="ranking-score">{{ team['score'] }} pts</div>
       </div>
-      <div class="muted tiny ranking-breakdown">
-        Saldo: {{ team['base_points'] }} · Éxitos: +{{ team['success_bonus'] }}
-        {% if team['invested_points'] %} · Inversión: +{{ team['invested_points'] }}{% endif %}
-        {% if team['return_penalty'] %} · Devoluciones: -{{ team['return_penalty'] }}{% endif %}
-        {% if team['cancellation_penalty'] %} · Cancelaciones: -{{ team['cancellation_penalty'] }}{% endif %}
-      </div>
     {% else %}
       <p class="muted">Todavía no hay ranking disponible.</p>
     {% endfor %}
@@ -111,7 +122,7 @@
 
 <section class="card narrow login-anchor" id="acceso">
   <h2>Ingresar al sistema</h2>
-  <p class="muted">El acceso quedó abajo para que primero se vea la actividad, los equipos y el ranking. Después, desde acá, cada cuenta entra a su panel de trabajo.</p>
+  <p class="muted">Ingeso a cuentas de equipo.</p>
   <form method="post" action="{{ url_for('login') }}" class="form-grid">
     <label>Usuario
       <input type="text" name="username" required>

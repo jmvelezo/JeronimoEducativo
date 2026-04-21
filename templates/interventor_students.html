@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Gestión de estudiantes</h1>
+<p class="muted">Desde acá el interventor puede crear estudiantes, asignarlos a equipos o mover integrantes entre equipos. No se borra nada desde este espacio. Para respetar la configuración actual del sistema, estas acciones quedan bloqueadas si existe un ciclo o borrador abierto.</p>
+
+{% if open_cycle %}
+<div class="flash warning">Hay un ciclo o borrador abierto: <strong>{{ open_cycle['name'] }}</strong>. Mientras exista, la composición de equipos queda bloqueada también para interventores.</div>
+{% endif %}
+
+<div class="button-row wrap bottom-gap">
+  <a class="btn-link secondary" href="{{ url_for('interventor_dashboard') }}">Volver al panel interventor</a>
+  <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Ver equipos</a>
+  {% if open_cycle %}<a class="btn-link secondary" href="{{ url_for('admin_cycle_detail', cycle_id=open_cycle['id']) }}">Ver ciclo abierto</a>{% endif %}
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Crear estudiante</h2>
+    <form method="post" action="{{ url_for('admin_create_student') }}" class="form-grid" id="interventor-create-student-form">
+      <input type="hidden" name="next" value="{{ url_for('interventor_students') }}">
+      <label>Nombre y apellido
+        <input type="text" name="full_name" required>
+      </label>
+      <label>Curso
+        <input type="text" name="course" placeholder="Ej. 1A o 6B">
+      </label>
+      <label>Asignar ahora a un equipo (opcional)
+        <select name="team_id" id="interventor-create-team-selector">
+          <option value="">Crear sin asignar</option>
+          {% for team in teams %}
+            <option value="{{ team['id'] }}" data-team-type="{{ team['team_type'] }}">{{ team['name'] }} · {{ team['course_label'] or 'Sin curso' }} · {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Rol interno inicial
+        <select name="internal_role" id="interventor-create-role-selector">
+          <option value="">Elegí un equipo primero</option>
+        </select>
+      </label>
+      <p class="muted">La creación usa la misma lógica que admin. Si elegís un equipo, también se registra la asignación inicial.</p>
+      {% if open_cycle %}
+      <button type="submit" disabled>Crear estudiante</button>
+      {% else %}
+      <button type="submit">Crear estudiante</button>
+      {% endif %}
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Asignar estudiante existente</h2>
+    <form method="post" action="{{ url_for('admin_add_member') }}" class="form-grid" id="interventor-assign-member-form">
+      <input type="hidden" name="next" value="{{ url_for('interventor_students') }}">
+      <label>Estudiante sin equipo activo
+        <select name="student_id">
+          {% for student in available_students %}
+            <option value="{{ student['id'] }}">{{ student['full_name'] }}{% if student['course'] %} · {{ student['course'] }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Equipo
+        <select name="team_id" id="interventor-assign-team-selector">
+          {% for team in teams %}
+            <option value="{{ team['id'] }}" data-team-type="{{ team['team_type'] }}">{{ team['name'] }} · {{ team['course_label'] or 'Sin curso' }} · {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Rol interno
+        <select name="internal_role" id="interventor-assign-role-selector"></select>
+      </label>
+      {% if open_cycle %}
+      <button type="submit" disabled>Asignar integrante</button>
+      {% else %}
+      <button type="submit">Asignar integrante</button>
+      {% endif %}
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Integrantes activos y movimiento entre equipos</h2>
+  <p class="muted">Acá podés mover integrantes activos de un equipo a otro y ajustar su rol interno. No se borra ninguna persona ni ninguna asignación desde esta pantalla.</p>
+  <table>
+    <tr><th>Estudiante</th><th>Curso</th><th>Equipo actual</th><th>Rol actual</th><th>Reasignar</th></tr>
+    {% for member in active_members %}
+      <tr>
+        <td>{{ member['full_name'] }}</td>
+        <td>{{ member['course'] or '—' }}</td>
+        <td>{{ member['team_name'] }} · {{ member['course_label'] or 'Sin curso' }}</td>
+        <td>{{ member['internal_role'] }}</td>
+        <td>
+          <form method="post" action="{{ url_for('interventor_move_member', member_id=member['member_id']) }}" class="inline-grid member-edit-form">
+            <input type="hidden" name="next" value="{{ url_for('interventor_students') }}">
+            <select name="team_id" class="move-team-selector" data-role-target="move-role-{{ member['member_id'] }}">
+              {% for team in teams %}
+                <option value="{{ team['id'] }}" data-team-type="{{ team['team_type'] }}" {% if team['id'] == member['team_id'] %}selected{% endif %}>{{ team['name'] }} · {{ team['course_label'] or 'Sin curso' }} · {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</option>
+              {% endfor %}
+            </select>
+            <select name="internal_role" id="move-role-{{ member['member_id'] }}" data-selected-role="{{ member['internal_role'] }}"></select>
+            {% if open_cycle %}
+            <button type="submit" disabled>Guardar cambio</button>
+            {% else %}
+            <button type="submit">Guardar cambio</button>
+            {% endif %}
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5">No hay integrantes activos cargados todavía.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<script>
+  const roleOptionsByType = {{ team_role_options|tojson }};
+
+  function fillRoleSelectorFromTeam(teamSelector, roleSelector, emptyLabel) {
+    if (!teamSelector || !roleSelector) return;
+    const selectedOption = teamSelector.options[teamSelector.selectedIndex];
+    const teamType = selectedOption ? selectedOption.dataset.teamType : '';
+    const roles = roleOptionsByType[teamType] || [];
+    const selectedRole = roleSelector.dataset.selectedRole || '';
+    roleSelector.innerHTML = '';
+    if (!roles.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = emptyLabel;
+      roleSelector.appendChild(option);
+      return;
+    }
+    roles.forEach((role, index) => {
+      const option = document.createElement('option');
+      option.value = role;
+      option.textContent = role;
+      if (selectedRole && selectedRole === role) {
+        option.selected = true;
+      } else if (!selectedRole && index === 0) {
+        option.selected = true;
+      }
+      roleSelector.appendChild(option);
+    });
+  }
+
+  const createTeamSelector = document.getElementById('interventor-create-team-selector');
+  const createRoleSelector = document.getElementById('interventor-create-role-selector');
+  if (createTeamSelector && createRoleSelector) {
+    const refreshCreateRoles = () => {
+      createRoleSelector.dataset.selectedRole = '';
+      fillRoleSelectorFromTeam(createTeamSelector, createRoleSelector, 'Elegí un equipo primero');
+    };
+    createTeamSelector.addEventListener('change', refreshCreateRoles);
+    refreshCreateRoles();
+  }
+
+  const assignTeamSelector = document.getElementById('interventor-assign-team-selector');
+  const assignRoleSelector = document.getElementById('interventor-assign-role-selector');
+  if (assignTeamSelector && assignRoleSelector) {
+    const refreshAssignRoles = () => {
+      assignRoleSelector.dataset.selectedRole = '';
+      fillRoleSelectorFromTeam(assignTeamSelector, assignRoleSelector, 'Sin roles');
+    };
+    assignTeamSelector.addEventListener('change', refreshAssignRoles);
+    refreshAssignRoles();
+  }
+
+  document.querySelectorAll('.move-team-selector').forEach((teamSelector) => {
+    const targetId = teamSelector.dataset.roleTarget;
+    const roleSelector = document.getElementById(targetId);
+    const refreshMoveRoles = () => fillRoleSelectorFromTeam(teamSelector, roleSelector, 'Sin roles');
+    teamSelector.addEventListener('change', refreshMoveRoles);
+    refreshMoveRoles();
+  });
+</script>
+{% endblock %}

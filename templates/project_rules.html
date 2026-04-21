@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Reglas del proyecto</h1>
+    <p class="muted">Una guía breve y clara para entender cómo funciona JeroCoin, qué se espera de cada equipo y por qué el interventor es una figura importante.</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('home') }}">Volver al inicio</a>
+  </div>
+</div>
+
+<section class="card team-hero-card">
+  <div class="team-hero-inner project-rules-hero">
+    <div class="rules-icon-wrap">⚙️</div>
+    <div>
+      <span class="badge">Cómo jugar y trabajar</span>
+      <h2>JeroCoin no es solo una moneda</h2>
+      <p>La idea del proyecto es aprender a organizarse, ofrecer un trabajo claro, contratar bien, respetar tiempos y dejar registro de lo que se hace. La moneda sirve para mover la actividad, pero el objetivo real es aprender a trabajar mejor en equipo.</p>
+      <div class="chip-row top-gap">
+        <span class="badge">Contratos</span>
+        <span class="badge">Portfolios</span>
+        <span class="badge">Entregas</span>
+        <span class="badge">Revisión</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Reglas generales</h2>
+  <ol class="simple-list">
+    <li>Cada equipo representa un grupo real de trabajo. Por eso importa tanto lo que hace como la forma en que lo presenta.</li>
+    <li>Los pedidos, las entregas, los cambios y las dudas tienen que quedar claros por escrito dentro del sistema.</li>
+    <li>Un contrato no se trata solo de “subir algo”. También hay que explicar qué se hizo, para qué sirve y en qué estado está.</li>
+    <li>Respetar fechas, responder correcciones y mantener ordenado el portfolio también forma parte del desempeño del equipo.</li>
+    <li>Cuando algo queda firmado o comentado por un interventor, esa decisión pasa a ser parte oficial del historial del proyecto.</li>
+  </ol>
+</section>
+
+<section class="card grid two">
+  <article class="card info-subcard">
+    <h2>Equipos que contratan</h2>
+    <p class="muted">Son los que necesitan un producto o una solución. Tienen que explicar bien qué quieren, revisar lo que reciben y usar su saldo con responsabilidad.</p>
+  </article>
+  <article class="card info-subcard">
+    <h2>Equipos que ofrecen servicios</h2>
+    <p class="muted">Son los que muestran portfolios, toman contratos y entregan trabajo. No alcanza con “hacer algo”: también tienen que poder explicarlo y sostenerlo.</p>
+  </article>
+</section>
+
+<section class="card">
+  <h2>La figura del interventor</h2>
+  <p>El interventor no está para molestar ni para quitarle protagonismo a los equipos. Su función es cuidar que el sistema sea justo, claro y ordenado.</p>
+  <div class="warning-box top-gap">
+    <strong>¿Por qué es importante?</strong> Porque valida procesos, deja comentarios, firma decisiones y evita que un contrato quede confuso, sin revisión o sin criterio.
+  </div>
+  <ol class="simple-list top-gap">
+    <li>Revisa si un contrato está bien planteado y si las entregas tienen sentido.</li>
+    <li>Puede pausar, reactivar o cerrar situaciones cuando hay demoras, devoluciones o problemas.</li>
+    <li>Deja comentarios y firmas visibles para que todos entiendan qué pasó.</li>
+    <li>Ayuda a que la actividad no dependa solo de la opinión de un equipo contra otro.</li>
+    <li>Su presencia le da seriedad al proyecto: convierte la práctica en una experiencia de trabajo más real.</li>
+  </ol>
+</section>
+
+<section class="card">
+  <h2>Cómo funciona la moneda y el puntaje</h2>
+  <p>Los JeroCoin mueven la economía del proyecto, pero el ranking no mira solamente cuántas monedas tiene un equipo guardadas. También mira cómo trabajó.</p>
+  <div class="warning-box top-gap">
+    <strong>{{ points_rule }}</strong>
+  </div>
+  <div class="kv-list top-gap">
+    <div><strong>Contrato base:</strong> {{ contract_price }} JeroCoin</div>
+    <div><strong>Cada JeroCoin disponible vale:</strong> {{ points_per_panchicoin }} puntos</div>
+    <div><strong>Proyecto exitoso:</strong> +{{ success_project_bonus }} puntos para ambos equipos</div>
+    <div><strong>Devolución:</strong> -{{ return_penalty }} puntos</div>
+    <div><strong>Cancelación:</strong> -{{ cancellation_penalty }} puntos</div>
+  </div>
+  <p class="top-gap">Además, cuando un equipo de robótica usa monedas en un proyecto que sí termina bien, esa inversión no desaparece del puntaje. Eso existe para que contratar bien también sea valorado y no parezca un castigo.</p>
+</section>
+
+<section class="card">
+  <h2>Qué conviene hacer para trabajar mejor</h2>
+  <ol class="simple-list">
+    <li>Escribir pedidos simples, concretos y entendibles.</li>
+    <li>Mostrar portfolios honestos, sin prometer cosas que el equipo todavía no puede hacer.</li>
+    <li>Subir entregas con una nota breve que explique qué se está enviando.</li>
+    <li>Leer siempre los comentarios y firmas antes de seguir avanzando.</li>
+    <li>Usar el ranking como referencia para mejorar, no solo como competencia.</li>
+  </ol>
+</section>
+{% endblock %}

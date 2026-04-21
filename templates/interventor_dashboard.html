@@ -10,11 +10,13 @@
       <div class="button-row wrap top-gap">
         <a class="btn-link secondary" href="{{ url_for('admin_cycle_detail', cycle_id=active_cycle['id']) }}">Ver ciclo activo</a>
         <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Ver equipos</a>
+        <a class="btn-link secondary" href="{{ url_for('interventor_students') }}">Gestionar estudiantes</a>
       </div>
     {% else %}
       <p class="muted">No hay un ciclo activo en este momento.</p>
       <div class="button-row wrap top-gap">
         <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Ver equipos</a>
+        <a class="btn-link secondary" href="{{ url_for('interventor_students') }}">Gestionar estudiantes</a>
       </div>
     {% endif %}
   </section>

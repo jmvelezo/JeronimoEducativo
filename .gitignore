@@ -1,0 +1,32 @@
+# Entorno virtual
+venv/
+.venv/
+
+# Caché de Python
+__pycache__/
+*.pyc
+
+# Variables sensibles
+.env
+
+# Archivos temporales
+*.log
+*.tmp
+
+# Base local si no querés subirla
+# panchicoin.db
+
+# Uploads reales
+uploads/*
+!uploads/.gitkeep
+!uploads/deliveries/.gitkeep
+!uploads/requests/.gitkeep
+!uploads/team_logos/.gitkeep
+!uploads/team_gallery/.gitkeep
+
+# Cosas del sistema
+.DS_Store
+Thumbs.db
+
+
+README.md
