@@ -9,6 +9,7 @@
     <a class="btn-link secondary" href="{{ url_for('team_profile_manage') }}">Editar mi equipo</a>
     <a class="btn-link secondary" href="{{ url_for('marketplace') }}">Ver mercado</a>
     <a class="btn-link secondary" href="{{ url_for('team_rules_page') }}">Ver reglas</a>
+    <a class="btn-link secondary" href="{{ url_for('development_team_site_editor') }}">Editar mi web</a>
     {% if team_site_public_url %}<a class="btn-link secondary" href="{{ team_site_public_url }}" target="_blank" rel="noopener">Abrir mi web pública</a>{% elif team_site %}<span class="badge secondary">{{ team_site_state_label }}</span>{% endif %}
     <a class="btn-link" href="{{ url_for('development_new_portfolio') }}">Crear portfolio</a>
   </div>

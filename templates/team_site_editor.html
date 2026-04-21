@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h1>Editor de mi web · {{ team['name'] }}</h1>
+    <p class="muted">Este espacio es para construir y actualizar la web pública propia del equipo. Acá pueden trabajar HTML y CSS, guardar borradores y publicar cuando la versión esté lista.</p>
+  </div>
+  <div class="button-row wrap">
+    <a class="btn-link secondary" href="{{ url_for('development_dashboard') }}">Volver al panel</a>
+    {% if team_site_public_url %}
+      <a class="btn-link secondary" href="{{ team_site_public_url }}" target="_blank" rel="noopener">Ver web publicada</a>
+    {% else %}
+      <span class="badge secondary">{{ team_site_state_label }}</span>
+    {% endif %}
+  </div>
+</div>
+
+<section class="card">
+  <div class="section-header compact">
+    <div>
+      <h2>Web pública del equipo</h2>
+      <p class="muted">Slug público: <strong>/equipos/{{ team_site['slug'] }}</strong> · Estado actual: <span class="badge">{{ team_site_state_label }}</span></p>
+    </div>
+  </div>
+
+  <div class="warning-box bottom-gap">
+    <strong>Editor seguro habilitado.</strong> Solo se aceptan HTML y CSS. El sistema bloquea scripts, iframes, formularios embebidos y otros elementos peligrosos.
+  </div>
+
+  <form method="post" action="{{ url_for('save_own_team_site_editor') }}" class="web-editor-form" id="ownTeamSiteEditorForm">
+    <div class="web-editor-grid">
+      <label>HTML de la página
+        <textarea name="site_html" id="teamSiteHtmlInput" rows="22" spellcheck="false">{{ team_site_preview_html or '' }}</textarea>
+      </label>
+      <label>CSS de la página
+        <textarea name="site_css" id="teamSiteCssInput" rows="22" spellcheck="false">{{ team_site_preview_css or '' }}</textarea>
+      </label>
+    </div>
+    <div class="button-row wrap top-gap">
+      <button type="submit">Guardar borrador</button>
+      <span class="muted">Guardar actualiza el borrador. Publicar reemplaza la versión visible de la web pública del equipo.</span>
+    </div>
+  </form>
+
+  <div class="button-row wrap top-gap">
+    <form method="post" action="{{ url_for('publish_own_team_site_editor') }}">
+      <button type="submit">Publicar cambios</button>
+    </form>
+    <form method="post" action="{{ url_for('restore_own_team_site_editor') }}">
+      <input type="hidden" name="mode" value="base">
+      <button type="submit" class="secondary">Restaurar plantilla base</button>
+    </form>
+    {% if team_site['published_html'] %}
+    <form method="post" action="{{ url_for('restore_own_team_site_editor') }}">
+      <input type="hidden" name="mode" value="published">
+      <button type="submit" class="secondary">Recuperar última versión publicada</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="web-preview-shell top-gap">
+    <div class="web-preview-header">
+      <strong>Vista previa en vivo</strong>
+      <span class="muted">No se publica hasta que uses “Publicar cambios”.</span>
+    </div>
+    <iframe
+      id="teamSitePreviewFrame"
+      class="web-preview-frame"
+      sandbox
+      referrerpolicy="no-referrer"
+      srcdoc="{{ team_site_preview_doc|e }}"
+      title="Vista previa de la web del equipo"
+    ></iframe>
+  </div>
+</section>
+
+<script>
+(function() {
+  const htmlInput = document.getElementById('teamSiteHtmlInput');
+  const cssInput = document.getElementById('teamSiteCssInput');
+  const previewFrame = document.getElementById('teamSitePreviewFrame');
+  if (!htmlInput || !cssInput || !previewFrame) return;
+
+  const basePreviewDoc = ({ html, css }) => `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #020617; color: #e2e8f0; }
+    .preview-shell { min-height: 100vh; padding: 18px; background: radial-gradient(circle at top, rgba(99,102,241,0.16), transparent 28%), linear-gradient(180deg, #0f172a, #020617); }
+    .preview-frame { max-width: 1080px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 28px; background: rgba(15,23,42,0.92); box-shadow: 0 28px 60px rgba(2,8,23,0.38); overflow: hidden; }
+    .preview-banner { padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.92rem; color: rgba(226,232,240,0.8); background: rgba(255,255,255,0.03); }
+    .preview-content { padding: 22px; }
+    ${css || ''}
+  </style>
+</head>
+<body>
+  <div class="preview-shell">
+    <div class="preview-frame">
+      <div class="preview-banner">Vista previa de la web del equipo · No publicada todavía</div>
+      <div class="preview-content team-site-content">
+        ${html || '<section class="site-section"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'}
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const refresh = () => {
+    previewFrame.srcdoc = basePreviewDoc({ html: htmlInput.value.trim(), css: cssInput.value.trim() });
+  };
+
+  htmlInput.addEventListener('input', refresh);
+  cssInput.addEventListener('input', refresh);
+})();
+</script>
+{% endblock %}

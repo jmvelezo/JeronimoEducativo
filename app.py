@@ -334,6 +334,22 @@ def build_team_site_preview_document(site_row, html_content: str, css_content: s
 """
 
 
+
+
+def build_team_site_editor_payload(site_row):
+    preview_html = site_row["draft_html"] or site_row["published_html"] or default_team_site_html(
+        site_row["team_name"], site_row["course_label"], site_row["service_track"]
+    )
+    preview_css = site_row["draft_css"] or site_row["published_css"] or default_team_site_css(site_row["service_track"])
+    return {
+        "preview_html": preview_html,
+        "preview_css": preview_css,
+        "preview_doc": build_team_site_preview_document(site_row, preview_html, preview_css),
+        "state_label": "Publicada" if site_row["status"] == "published" else "Borrador",
+        "public_url": url_for("public_team_site", slug=site_row["slug"]) if site_row["status"] == "published" else None,
+    }
+
+
 def allowed_upload(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_UPLOAD_EXTENSIONS
 
@@ -4376,7 +4392,105 @@ def development_dashboard():
         service_track_options=SERVICE_TRACK_OPTIONS,
         ai_enabled=ai_feature_enabled(),
         team_site=team_site,
+        team_site_public_url=(url_for("public_team_site", slug=team_site["slug"]) if team_site and team_site["status"] == "published" else None),
+        team_site_state_label=("Web pública lista" if team_site and team_site["status"] == "published" else ("Web base creada" if team_site else "Todavía no tiene web")),
     )
+
+
+@app.route("/desarrollo/mi-web")
+@role_required("desarrollo_team")
+def development_team_site_editor():
+    user = current_user()
+    with get_connection() as conn:
+        team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
+        if not team:
+            abort(404)
+        ensure_team_site_for_team(conn, team)
+        team_site = team_site_by_team_id(conn, team["id"])
+        if not team_site:
+            flash("No se pudo preparar la web del equipo.", "danger")
+            return redirect_back("development_dashboard")
+        payload = build_team_site_editor_payload(team_site)
+    return render_template(
+        "team_site_editor.html",
+        team=team,
+        team_site=team_site,
+        team_site_preview_html=payload["preview_html"],
+        team_site_preview_css=payload["preview_css"],
+        team_site_preview_doc=payload["preview_doc"],
+        team_site_public_url=payload["public_url"],
+        team_site_state_label=payload["state_label"],
+        service_track_options=SERVICE_TRACK_OPTIONS,
+    )
+
+
+@app.route("/desarrollo/mi-web/guardar", methods=["POST"])
+@role_required("desarrollo_team")
+def save_own_team_site_editor():
+    user = current_user()
+    html_source = request.form.get("site_html", "")
+    css_source = request.form.get("site_css", "")
+    if len((html_source or "")) > WEB_EDITOR_HTML_MAX_CHARS:
+        flash(f"El HTML supera el máximo permitido de {WEB_EDITOR_HTML_MAX_CHARS} caracteres.", "danger")
+        return redirect(url_for("development_team_site_editor"))
+    if len((css_source or "")) > WEB_EDITOR_CSS_MAX_CHARS:
+        flash(f"El CSS supera el máximo permitido de {WEB_EDITOR_CSS_MAX_CHARS} caracteres.", "danger")
+        return redirect(url_for("development_team_site_editor"))
+    with get_connection() as conn:
+        team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
+        if not team:
+            abort(404)
+        ensure_team_site_for_team(conn, team)
+        site = team_site_by_team_id(conn, team["id"])
+        if not site:
+            flash("No se encontró la web del equipo.", "danger")
+            return redirect_back("development_dashboard")
+        safe_html, safe_css = normalize_team_site_sources(site, html_source, css_source)
+        conn.execute(
+            "UPDATE team_sites SET draft_html = ?, draft_css = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (safe_html, safe_css, site["id"]),
+        )
+    flash("Borrador web guardado.", "success")
+    return redirect(url_for("development_team_site_editor"))
+
+
+@app.route("/desarrollo/mi-web/publicar", methods=["POST"])
+@role_required("desarrollo_team")
+def publish_own_team_site_editor():
+    user = current_user()
+    with get_connection() as conn:
+        team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
+        if not team:
+            abort(404)
+        ensure_team_site_for_team(conn, team)
+        site = team_site_by_team_id(conn, team["id"])
+        if not site:
+            flash("No se encontró la web del equipo.", "danger")
+            return redirect_back("development_dashboard")
+        ok = publish_team_site_from_draft(conn, site["id"])
+    flash("Web publicada correctamente." if ok else "No había cambios válidos para publicar.", "success" if ok else "warning")
+    return redirect(url_for("development_team_site_editor"))
+
+
+@app.route("/desarrollo/mi-web/restaurar", methods=["POST"])
+@role_required("desarrollo_team")
+def restore_own_team_site_editor():
+    user = current_user()
+    mode = (request.form.get("mode") or "published").strip().lower()
+    if mode not in {"published", "base"}:
+        mode = "base"
+    with get_connection() as conn:
+        team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
+        if not team:
+            abort(404)
+        ensure_team_site_for_team(conn, team)
+        site = team_site_by_team_id(conn, team["id"])
+        if not site:
+            flash("No se encontró la web del equipo.", "danger")
+            return redirect_back("development_dashboard")
+        ok = restore_team_site_draft(conn, site["id"], mode=mode)
+    flash("Borrador restaurado." if ok else "No se pudo restaurar el borrador.", "success" if ok else "warning")
+    return redirect(url_for("development_team_site_editor"))
 
 
 @app.route("/desarrollo/portfolio/nuevo")
