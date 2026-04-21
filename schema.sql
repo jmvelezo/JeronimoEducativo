@@ -43,6 +43,20 @@ CREATE TABLE IF NOT EXISTS team_gallery (
     FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS team_sites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id INTEGER NOT NULL UNIQUE,
+    slug TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'published' CHECK(status IN ('draft', 'published')),
+    draft_html TEXT,
+    draft_css TEXT,
+    published_html TEXT,
+    published_css TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
@@ -115,6 +129,8 @@ CREATE TABLE IF NOT EXISTS contracts (
     client_team_type TEXT,
     provider_team_type TEXT,
     provider_service_track TEXT,
+    web_request_kind TEXT CHECK(web_request_kind IN ('create', 'modify')),
+    target_team_site_id INTEGER,
     portfolio_id INTEGER,
     requested_amount INTEGER NOT NULL,
     reserved_amount INTEGER NOT NULL DEFAULT 0,
@@ -153,6 +169,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     FOREIGN KEY (cycle_id) REFERENCES cycles(id) ON DELETE SET NULL,
     FOREIGN KEY (robotics_team_id) REFERENCES teams(id) ON DELETE CASCADE,
     FOREIGN KEY (development_team_id) REFERENCES teams(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_team_site_id) REFERENCES team_sites(id) ON DELETE SET NULL,
     FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE SET NULL,
     FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );

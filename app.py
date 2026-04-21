@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 import os
 import re
+import html
 from typing import Callable
 from uuid import uuid4
 import math
@@ -15,7 +16,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from db import execute, get_connection, init_db, query_all, query_one
+from db import execute, get_connection, init_db, query_all, query_one, ensure_team_site_for_team, ensure_contract_team_site_for_team, default_team_site_html, default_team_site_css
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("JEROCOIN_SECRET_KEY") or os.environ.get("FLASK_SECRET_KEY") or "jerocoin-local-dev-key-change-this"
@@ -56,6 +57,10 @@ SERVICE_TRACK_TO_PORTFOLIO_CATEGORY = {
     "programacion": "programacion_robotica",
     "web_html": "pagina_web_simple",
 }
+WEB_REQUEST_KIND_OPTIONS = {
+    "create": "Creación de web",
+    "modify": "Mejora / modificación web",
+}
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads" / "deliveries"
 REQUEST_UPLOAD_DIR = BASE_DIR / "uploads" / "requests"
@@ -73,6 +78,9 @@ ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
 AI_SUPPORTED_TEXT_EXTENSIONS = {"py", "txt", "md", "json", "csv", "ino", "c", "cpp", "h", "java", "js", "ts"}
 AI_MAX_QUESTION_CHARS = 500
 AI_MAX_CODE_CHARS = 12000
+WEB_EDITOR_HTML_MAX_CHARS = 35000
+WEB_EDITOR_CSS_MAX_CHARS = 12000
+WEB_EDITOR_EDITABLE_STATUSES = ("active", "in_development", "correction_required")
 AI_RESPONSE_MAX_CHARS = 2200
 
 OPEN_CONTRACT_STATUSES = ('pending_interventor_activation', 'active', 'in_development', 'submitted_for_review', 'correction_required')
@@ -91,6 +99,198 @@ def current_user():
     if not user_id:
         return None
     return query_one("SELECT * FROM users WHERE id = ? AND active = 1", (user_id,))
+
+
+def team_site_by_team_id(conn, team_id: int):
+    return conn.execute(
+        """
+        SELECT ts.*, t.name AS team_name, t.course_label, t.service_track, t.profile_blurb,
+               t.logo_stored_filename, t.active AS team_active,
+               (
+                   SELECT tg.stored_filename
+                   FROM team_gallery tg
+                   WHERE tg.team_id = t.id
+                   ORDER BY tg.id DESC
+                   LIMIT 1
+               ) AS preview_gallery_image
+        FROM team_sites ts
+        JOIN teams t ON t.id = ts.team_id
+        WHERE ts.team_id = ?
+        """,
+        (team_id,),
+    ).fetchone()
+
+
+def build_web_request_context(conn, client_team, provider_track: str | None):
+    if not client_team or (provider_track or "programacion") != "web_html":
+        return None
+    team_site = team_site_by_team_id(conn, client_team["id"])
+    if client_team["team_type"] == "desarrollo" and not team_site:
+        ensure_team_site_for_team(conn, client_team)
+        team_site = team_site_by_team_id(conn, client_team["id"])
+    has_public_site = bool(team_site and team_site["status"] == "published")
+    kind = "modify" if has_public_site else "create"
+    preview_url = url_for("public_team_site", slug=team_site["slug"]) if has_public_site else None
+    if kind == "create":
+        summary = "Este contrato va a crear la primera web pública de tu equipo dentro de JeroCoin."
+        current_state = "Tu equipo todavía no tiene una web pública publicada."
+    else:
+        summary = "Este contrato se tomará como una mejora o modificación sobre la web pública actual de tu equipo."
+        current_state = "Tu equipo ya tiene una web pública y este trabajo se contará como mejora."
+    return {
+        "kind": kind,
+        "label": WEB_REQUEST_KIND_OPTIONS[kind],
+        "team_site": team_site,
+        "has_public_site": has_public_site,
+        "preview_url": preview_url,
+        "summary": summary,
+        "current_state": current_state,
+    }
+
+
+def sanitize_contract_web_html(value: str) -> str:
+    value = (value or "").replace("\r\n", "\n").strip()
+    if not value:
+        return ""
+    value = re.sub(r"<!doctype[^>]*>", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"</?\s*(html|head|body)\b[^>]*>", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"<\s*script\b[^>]*>.*?<\s*/\s*script\s*>", "", value, flags=re.IGNORECASE | re.DOTALL)
+    value = re.sub(r"<\s*style\b[^>]*>.*?<\s*/\s*style\s*>", "", value, flags=re.IGNORECASE | re.DOTALL)
+    value = re.sub(r"<\s*(iframe|object|embed|link|meta|base|form)\b[^>]*>.*?<\s*/\s*\1\s*>", "", value, flags=re.IGNORECASE | re.DOTALL)
+    value = re.sub(r"<\s*(iframe|object|embed|link|meta|base|form)\b[^>]*/?>", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\son[a-zA-Z]+\s*=\s*(\".*?\"|'.*?'|[^\s>]+)", "", value, flags=re.IGNORECASE | re.DOTALL)
+    value = re.sub(r'(href|src)\s*=\s*(["\'])\s*javascript:[^"\']*\2', r'\1=\2#\2', value, flags=re.IGNORECASE)
+    value = re.sub(r"javascript:", "", value, flags=re.IGNORECASE)
+    value = value.strip()
+    if len(value) > WEB_EDITOR_HTML_MAX_CHARS:
+        value = value[:WEB_EDITOR_HTML_MAX_CHARS]
+    return value
+
+
+def sanitize_contract_web_css(value: str) -> str:
+    value = (value or "").replace("\r\n", "\n").strip()
+    if not value:
+        return ""
+    value = re.sub(r"<\s*/?\s*style\b[^>]*>", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"@import\s+[^;]+;", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"expression\s*\([^)]*\)", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"behavior\s*:\s*url\s*\([^)]*\)", "", value, flags=re.IGNORECASE)
+    value = re.sub(r'url\s*\(\s*(["\'])?javascript:[^)]*\)', 'none', value, flags=re.IGNORECASE)
+    value = value.strip()
+    if len(value) > WEB_EDITOR_CSS_MAX_CHARS:
+        value = value[:WEB_EDITOR_CSS_MAX_CHARS]
+    return value
+
+
+def normalize_team_site_sources(site_row, html_content: str | None, css_content: str | None) -> tuple[str, str]:
+    safe_html = sanitize_contract_web_html(html_content or "")
+    safe_css = sanitize_contract_web_css(css_content or "")
+    if not safe_html:
+        safe_html = default_team_site_html(
+            site_row["team_name"],
+            site_row["course_label"],
+            site_row["service_track"],
+        )
+    return safe_html, safe_css
+
+
+def team_site_has_editable_draft(conn, site_id: int) -> bool:
+    row = conn.execute("SELECT draft_html, draft_css FROM team_sites WHERE id = ?", (site_id,)).fetchone()
+    if not row:
+        return False
+    return bool((row["draft_html"] or "").strip() or (row["draft_css"] or "").strip())
+
+
+def publish_team_site_from_draft(conn, site_id: int) -> bool:
+    site = conn.execute(
+        """
+        SELECT ts.id, ts.draft_html, ts.draft_css, t.name AS team_name, t.course_label, t.service_track
+        FROM team_sites ts
+        JOIN teams t ON t.id = ts.team_id
+        WHERE ts.id = ?
+        """,
+        (site_id,),
+    ).fetchone()
+    if not site:
+        return False
+    draft_html = (site["draft_html"] or "").strip()
+    draft_css = (site["draft_css"] or "").strip()
+    if not draft_html and not draft_css:
+        return False
+    safe_html, safe_css = normalize_team_site_sources(site, draft_html, draft_css)
+    conn.execute(
+        """
+        UPDATE team_sites
+        SET published_html = ?,
+            published_css = ?,
+            status = 'published',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (safe_html, safe_css, site_id),
+    )
+    return True
+
+
+def restore_team_site_draft(conn, site_id: int, mode: str = "published") -> bool:
+    site = conn.execute(
+        """
+        SELECT ts.id, ts.published_html, ts.published_css, t.name AS team_name, t.course_label, t.service_track
+        FROM team_sites ts
+        JOIN teams t ON t.id = ts.team_id
+        WHERE ts.id = ?
+        """,
+        (site_id,),
+    ).fetchone()
+    if not site:
+        return False
+    use_published = mode == "published" and bool((site["published_html"] or "").strip())
+    if use_published:
+        source_html = site["published_html"] or ""
+        source_css = site["published_css"] or ""
+    else:
+        source_html = default_team_site_html(site["team_name"], site["course_label"], site["service_track"])
+        source_css = default_team_site_css(site["service_track"])
+    safe_html, safe_css = normalize_team_site_sources(site, source_html, source_css)
+    conn.execute(
+        "UPDATE team_sites SET draft_html = ?, draft_css = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (safe_html, safe_css, site_id),
+    )
+    return True
+
+
+def build_team_site_preview_document(site_row, html_content: str, css_content: str) -> str:
+    safe_html, safe_css = normalize_team_site_sources(site_row, html_content, css_content)
+    team_name = html.escape(site_row["team_name"] if site_row and site_row["team_name"] else "Equipo")
+    return f"""<!doctype html>
+<html lang=\"es\">
+<head>
+  <meta charset=\"utf-8\">
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+  <title>{team_name} · Vista previa</title>
+  <style>
+    :root {{ color-scheme: dark; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #020617; color: #e2e8f0; }}
+    .preview-shell {{ min-height: 100vh; padding: 18px; background: radial-gradient(circle at top, rgba(99,102,241,0.16), transparent 28%), linear-gradient(180deg, #0f172a, #020617); }}
+    .preview-frame {{ max-width: 1080px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 28px; background: rgba(15,23,42,0.92); box-shadow: 0 28px 60px rgba(2,8,23,0.38); overflow: hidden; }}
+    .preview-banner {{ padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.92rem; color: rgba(226,232,240,0.8); background: rgba(255,255,255,0.03); }}
+    .preview-content {{ padding: 22px; }}
+    {safe_css or ''}
+  </style>
+</head>
+<body>
+  <div class=\"preview-shell\">
+    <div class=\"preview-frame\">
+      <div class=\"preview-banner\">Vista previa de la web del equipo · No publicada todavía</div>
+      <div class=\"preview-content team-site-content\">
+        {safe_html or '<section class=\"site-section\"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+"""
 
 
 def allowed_upload(filename: str) -> bool:
@@ -675,6 +875,34 @@ def fetch_contract_detail_bundle(contract_id: int):
         if review["review_stage"] == "final_delivery" and review["decision"] in {"correction_required", "rejected"}:
             latest_return_review = review
             break
+    target_team_site = None
+    preview_html = None
+    preview_css = None
+    team_site_preview_doc = None
+    if contract["target_team_site_id"]:
+        target_team_site = query_one(
+            """
+            SELECT ts.*, t.name AS team_name, t.course_label, t.service_track, t.profile_blurb,
+                   t.logo_stored_filename,
+                   (
+                       SELECT tg.stored_filename
+                       FROM team_gallery tg
+                       WHERE tg.team_id = t.id
+                       ORDER BY tg.id DESC
+                       LIMIT 1
+                   ) AS preview_gallery_image
+            FROM team_sites ts
+            JOIN teams t ON t.id = ts.team_id
+            WHERE ts.id = ?
+            """,
+            (contract["target_team_site_id"],),
+        )
+        if target_team_site:
+            preview_html = target_team_site["draft_html"] or target_team_site["published_html"] or default_team_site_html(
+                target_team_site["team_name"], target_team_site["course_label"], target_team_site["service_track"]
+            )
+            preview_css = target_team_site["draft_css"] or target_team_site["published_css"] or default_team_site_css(target_team_site["service_track"])
+            team_site_preview_doc = build_team_site_preview_document(target_team_site, preview_html, preview_css)
     cycle_state = None
     if contract["cycle_id"]:
         cycle_state = cycle_state_label({"status": contract["cycle_status"], "started": contract["cycle_started"]})
@@ -685,6 +913,10 @@ def fetch_contract_detail_bundle(contract_id: int):
         "transactions": transactions,
         "latest_return_review": latest_return_review,
         "cycle_state": cycle_state,
+        "target_team_site": target_team_site,
+        "team_site_preview_html": preview_html,
+        "team_site_preview_css": preview_css,
+        "team_site_preview_doc": team_site_preview_doc,
     }
 
 
@@ -1251,6 +1483,7 @@ def build_public_home_context():
             """
             SELECT t.id, t.name, t.team_type, t.profile_blurb, t.logo_stored_filename,
                    COALESCE(w.balance, 0) AS wallet_balance,
+                   ts.slug AS public_site_slug,
                    COALESCE(NULLIF(t.course_label, ''), (
                        SELECT s.course
                        FROM team_members tm
@@ -1268,6 +1501,7 @@ def build_public_home_context():
                    ) AS preview_gallery_image
             FROM teams t
             LEFT JOIN wallets w ON w.owner_type = 'team' AND w.owner_id = t.id
+            LEFT JOIN team_sites ts ON ts.team_id = t.id AND ts.status = 'published'
             WHERE t.active = 1
             ORDER BY course_label, t.name
             """
@@ -1316,7 +1550,7 @@ def build_public_home_context():
 
 @app.context_processor
 def inject_globals():
-    return {"current_user": current_user(), "panchicoin_points": panchicoin_points, "points_rule_text": build_points_rule_text}
+    return {"current_user": current_user(), "panchicoin_points": panchicoin_points, "points_rule_text": build_points_rule_text, "web_request_kind_options": WEB_REQUEST_KIND_OPTIONS}
 
 
 @app.route("/")
@@ -1890,13 +2124,17 @@ def development_contract_detail(contract_id: int):
         flash("Contrato no encontrado.", "danger")
         return redirect_back("development_dashboard")
     contract = detail["contract"]
+    provider_track = contract["provider_service_track_resolved"] or contract["provider_service_track"]
+    is_web_contract = provider_track == "web_html" and contract["target_team_site_id"]
     can_submit_delivery = contract["status"] in OPEN_CONTRACT_STATUSES and not contract["paused_by_deadline"]
+    can_edit_web_contract = bool(is_web_contract and contract["status"] in WEB_EDITOR_EDITABLE_STATUSES and not contract["paused_by_deadline"])
     return render_template(
         "contract_workspace.html",
         viewer_role="desarrollo_team",
         back_endpoint="development_dashboard",
         back_label="Volver al panel de desarrollo",
         can_submit_delivery=can_submit_delivery,
+        can_edit_web_contract=can_edit_web_contract,
         current_contract=contract,
         **detail,
     )
@@ -1917,6 +2155,7 @@ def development_client_contract_detail(contract_id: int):
         back_endpoint="development_dashboard",
         back_label="Volver al panel de desarrollo",
         can_submit_delivery=False,
+        can_edit_web_contract=False,
         current_contract=contract,
         **detail,
     )
@@ -1937,6 +2176,7 @@ def robotics_contract_detail(contract_id: int):
         back_endpoint="robotics_dashboard",
         back_label="Volver al panel de robótica",
         can_submit_delivery=False,
+        can_edit_web_contract=False,
         current_contract=contract,
         **detail,
     )
@@ -2436,6 +2676,38 @@ def download_request_file(stored_filename: str):
     return send_from_directory(REQUEST_UPLOAD_DIR, stored_filename, as_attachment=True, download_name=contract["request_original_filename"] or stored_filename)
 
 
+@app.route("/equipos/<slug>")
+def public_team_site(slug: str):
+    with get_connection() as conn:
+        site = conn.execute(
+            """
+            SELECT ts.*, t.id AS team_id, t.name AS team_name, t.course_label, t.service_track,
+                   t.profile_blurb, t.logo_stored_filename, t.active AS team_active,
+                   (
+                       SELECT tg.stored_filename
+                       FROM team_gallery tg
+                       WHERE tg.team_id = t.id
+                       ORDER BY tg.id DESC
+                       LIMIT 1
+                   ) AS preview_gallery_image
+            FROM team_sites ts
+            JOIN teams t ON t.id = ts.team_id
+            WHERE ts.slug = ?
+            """,
+            (slug,),
+        ).fetchone()
+    if not site or not site["team_active"] or site["status"] != "published":
+        abort(404)
+    site_html, site_css = normalize_team_site_sources(site, site["published_html"], site["published_css"])
+    return render_template(
+        "team_site_public.html",
+        title=f"{site['team_name']} · web pública",
+        site=site,
+        site_html=site_html,
+        site_css=site_css,
+    )
+
+
 @app.route("/public/team-assets/logo/<path:stored_filename>")
 def public_team_logo_file(stored_filename: str):
     row = query_one("SELECT id FROM teams WHERE logo_stored_filename = ?", (stored_filename,))
@@ -2823,6 +3095,14 @@ def admin_create_team():
                     "INSERT INTO users (username, password_hash, role, team_id, active) VALUES (?, ?, ?, ?, 1)",
                     (username, generate_password_hash(password), ROLE_BY_TEAM_TYPE[team_type], team_id),
                 )
+            if team_type == "desarrollo":
+                ensure_team_site_for_team(conn, {
+                    "id": team_id,
+                    "name": name,
+                    "team_type": team_type,
+                    "course_label": course_label,
+                    "service_track": service_track,
+                })
             descriptor = f"{name} ({course_label or 'Sin curso'} · {market_role} · {service_track})"
             log_action(conn, user["id"], "create_team", "team", team_id, descriptor)
             log_action(conn, user["id"], "create_wallet", "wallet", wallet_id, f"Saldo inicial: {initial_balance}")
@@ -2864,6 +3144,15 @@ def admin_update_team(team_id: int):
             "UPDATE teams SET name = ?, course_label = ?, service_track = ?, market_role = ?, max_contracts = ?, notes = ?, active = ? WHERE id = ?",
             (name, course_label, service_track, market_role, max_contracts, notes, active, team_id),
         )
+        updated_team = {
+            "id": team_id,
+            "name": name,
+            "team_type": team["team_type"],
+            "course_label": course_label,
+            "service_track": service_track,
+        }
+        if team["team_type"] == "desarrollo":
+            ensure_team_site_for_team(conn, updated_team)
         if active == 0:
             conn.execute("UPDATE users SET active = 0 WHERE team_id = ?", (team_id,))
         log_action(conn, user["id"], "update_team", "team", team_id, f"{name} · course={course_label or 'Sin curso'} · role={market_role} · track={service_track} · active={active} · max={max_contracts}")
@@ -3294,6 +3583,7 @@ def market_portfolio_detail(portfolio_id: int):
         contract_request_open_contracts = 0
         contract_request_price = settings["contract_price"] if settings else 30
         contract_request_dashboard_endpoint = team_dashboard_endpoint(user) if user else "dashboard"
+        contract_request_web_context = None
         if user and user['role'] in {'robotica_team', 'desarrollo_team'}:
             contract_request_team = conn.execute("SELECT * FROM teams WHERE id = ?", (user['team_id'],)).fetchone()
             if contract_request_team:
@@ -3303,6 +3593,7 @@ def market_portfolio_detail(portfolio_id: int):
                 ).fetchone()
                 allowed, note = team_can_request_portfolio(contract_request_team, portfolio)
                 contract_request_note = note
+                contract_request_web_context = build_web_request_context(conn, contract_request_team, portfolio['service_track'])
                 if allowed:
                     if not active_cycle:
                         contract_request_note = "No hay un ciclo activo listo para operar este contrato."
@@ -3336,6 +3627,7 @@ def market_portfolio_detail(portfolio_id: int):
         contract_request_limit=CLIENT_OPEN_CONTRACT_LIMIT,
         contract_request_price=contract_request_price,
         contract_request_dashboard_endpoint=contract_request_dashboard_endpoint,
+        contract_request_web_context=contract_request_web_context,
         portfolio_service_category_options=PORTFOLIO_SERVICE_CATEGORY_OPTIONS,
         service_track_options=SERVICE_TRACK_OPTIONS,
     )
@@ -3515,6 +3807,8 @@ def robotics_dashboard():
     settings = query_one(
         "SELECT * FROM economic_settings ORDER BY effective_from DESC, id DESC LIMIT 1"
     )
+    with get_connection() as conn:
+        contract_request_web_context = build_web_request_context(conn, team, portfolio['service_track'])
     return render_template(
         "robotics_dashboard.html",
         team=team,
@@ -3646,6 +3940,7 @@ def robotics_portfolio_detail(portfolio_id: int):
         last_contract=last_contract,
         last_contract_reviews=last_contract_reviews,
         latest_return_review=latest_return_review,
+        contract_request_web_context=contract_request_web_context,
         portfolio_service_category_options=PORTFOLIO_SERVICE_CATEGORY_OPTIONS,
         service_track_options=SERVICE_TRACK_OPTIONS,
     )
@@ -3704,6 +3999,18 @@ def request_market_contract():
         if not cycle_has_team(conn, active_cycle['id'], portfolio['team_id']):
             flash("Ese equipo proveedor no participa en el ciclo activo.", "warning")
             return safe_redirect_target(next_target, "market_portfolio_detail", portfolio_id=portfolio_id)
+        web_request_kind = None
+        target_team_site_id = None
+        provider_track = portfolio['service_track'] or 'programacion'
+        if provider_track == 'web_html':
+            request_context = build_web_request_context(conn, client_team, provider_track)
+            web_request_kind = request_context['kind'] if request_context else None
+            if request_context and request_context['has_public_site'] and request_context['team_site']:
+                target_team_site_id = request_context['team_site']['id']
+            elif request_context and request_context['team_site']:
+                target_team_site_id = request_context['team_site']['id']
+            else:
+                target_team_site_id = ensure_contract_team_site_for_team(conn, client_team)
         team_wallet = conn.execute(
             "SELECT * FROM wallets WHERE owner_type = 'team' AND owner_id = ?",
             (user["team_id"],),
@@ -3729,15 +4036,17 @@ def request_market_contract():
             INSERT INTO contracts (
                 cycle_id, robotics_team_id, development_team_id,
                 client_team_id, provider_team_id, client_team_type, provider_team_type, provider_service_track,
+                web_request_kind, target_team_site_id,
                 portfolio_id, requested_amount, reserved_amount, status, requested_by_user_id,
                 requested_delivery_date, request_message, request_file_path,
                 request_original_filename, request_stored_filename, request_file_size,
                 paused_by_deadline
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_interventor_activation', ?, ?, ?, ?, ?, ?, ?, 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_interventor_activation', ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 active_cycle['id'], client_team["id"], portfolio["team_id"],
-                client_team["id"], portfolio["team_id"], client_team['team_type'], 'desarrollo', provider_team['service_track'] or 'programacion',
+                client_team["id"], portfolio["team_id"], client_team['team_type'], provider_team['team_type'], provider_team['service_track'] or 'programacion',
+                web_request_kind, target_team_site_id,
                 portfolio_id, contract_price, contract_price, user["id"],
                 requested_delivery_date, request_message,
                 str((REQUEST_UPLOAD_DIR / request_stored_filename).relative_to(BASE_DIR)) if request_stored_filename else None,
@@ -3749,7 +4058,7 @@ def request_market_contract():
             "INSERT INTO transactions (from_wallet_id, to_wallet_id, amount, transaction_type, description, created_by_user_id, cycle_id) VALUES (?, NULL, ?, 'reserve', ?, ?, ?)",
             (team_wallet["id"], contract_price, f"Reserva del contrato #{contract_id}", user["id"], active_cycle['id']),
         )
-        log_action(conn, user["id"], "request_contract", "contract", contract_id, f"portfolio={portfolio_id} deadline={requested_delivery_date}")
+        log_action(conn, user["id"], "request_contract", "contract", contract_id, f"portfolio={portfolio_id} deadline={requested_delivery_date} web_kind={web_request_kind or '-'}")
         conn.commit()
     flash("Contrato solicitado desde el mercado. Quedó pendiente de validación del interventor.", "success")
     return safe_redirect_target(next_target, team_dashboard_endpoint(user))
@@ -3790,6 +4099,16 @@ def request_contract():
         if not cycle_has_team(conn, active_cycle['id'], portfolio['team_id']):
             flash("Ese equipo de desarrollo no participa en el ciclo activo.", "warning")
             return redirect_back("robotics_dashboard")
+        web_request_kind = None
+        target_team_site_id = None
+        provider_track = portfolio['service_track'] or 'programacion'
+        if provider_track == 'web_html':
+            request_context = build_web_request_context(conn, team, provider_track)
+            web_request_kind = request_context['kind'] if request_context else None
+            if request_context and request_context['team_site']:
+                target_team_site_id = request_context['team_site']['id']
+            else:
+                target_team_site_id = ensure_contract_team_site_for_team(conn, team)
         team_wallet = conn.execute(
             "SELECT * FROM wallets WHERE owner_type = 'team' AND owner_id = ?",
             (user["team_id"],),
@@ -3821,15 +4140,17 @@ def request_contract():
             INSERT INTO contracts (
                 cycle_id, robotics_team_id, development_team_id,
                 client_team_id, provider_team_id, client_team_type, provider_team_type, provider_service_track,
+                web_request_kind, target_team_site_id,
                 portfolio_id, requested_amount, reserved_amount, status, requested_by_user_id,
                 requested_delivery_date, request_message, request_file_path,
                 request_original_filename, request_stored_filename, request_file_size,
                 paused_by_deadline
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_interventor_activation', ?, ?, ?, ?, ?, ?, ?, 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_interventor_activation', ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 active_cycle['id'], user["team_id"], portfolio["team_id"],
-                user["team_id"], portfolio["team_id"], 'robotica', 'desarrollo', dev_team['service_track'] or 'programacion',
+                user["team_id"], portfolio["team_id"], 'robotica', dev_team['team_type'], dev_team['service_track'] or 'programacion',
+                web_request_kind, target_team_site_id,
                 portfolio_id, settings["contract_price"], settings["contract_price"], user["id"],
                 requested_delivery_date, request_message,
                 str((REQUEST_UPLOAD_DIR / request_stored_filename).relative_to(BASE_DIR)) if request_stored_filename else None,
@@ -3841,7 +4162,7 @@ def request_contract():
             "INSERT INTO transactions (from_wallet_id, to_wallet_id, amount, transaction_type, description, created_by_user_id, cycle_id) VALUES (?, NULL, ?, 'reserve', ?, ?, ?)",
             (team_wallet["id"], settings["contract_price"], f"Reserva del contrato #{contract_id}", user["id"], active_cycle['id']),
         )
-        log_action(conn, user["id"], "request_contract", "contract", contract_id, f"portfolio={portfolio_id} deadline={requested_delivery_date}")
+        log_action(conn, user["id"], "request_contract", "contract", contract_id, f"portfolio={portfolio_id} deadline={requested_delivery_date} web_kind={web_request_kind or '-'}")
         conn.commit()
     flash("Contrato solicitado. Quedó pendiente de validación del interventor.", "success")
     return redirect_back("robotics_dashboard")
@@ -3913,6 +4234,7 @@ def development_dashboard():
     )
     with get_connection() as conn:
         team_gallery = fetch_team_gallery(conn, team["id"], limit=8)
+        team_site = team_site_by_team_id(conn, team["id"])
     portfolios = query_all("SELECT * FROM portfolios WHERE team_id = ? ORDER BY id DESC", (team["id"],))
     contracts = query_all(
         """
@@ -3995,6 +4317,7 @@ def development_dashboard():
         portfolio_service_category_options=PORTFOLIO_SERVICE_CATEGORY_OPTIONS,
         service_track_options=SERVICE_TRACK_OPTIONS,
         ai_enabled=ai_feature_enabled(),
+        team_site=team_site,
     )
 
 
@@ -4102,6 +4425,96 @@ def delete_portfolio(portfolio_id: int):
     return redirect_back("development_dashboard")
 
 
+@app.route("/desarrollo/contracts/<int:contract_id>/web-editor/save", methods=["POST"])
+@role_required("desarrollo_team")
+def save_web_contract_editor(contract_id: int):
+    user = current_user()
+    html_source = request.form.get("site_html", "")
+    css_source = request.form.get("site_css", "")
+    contract = query_one(
+        f"""
+        SELECT c.*, {CONTRACT_PROVIDER_SQL} AS provider_team_id_resolved,
+               {CONTRACT_CLIENT_SQL} AS client_team_id_resolved
+        FROM contracts c
+        WHERE c.id = ? AND {CONTRACT_PROVIDER_SQL} = ?
+        """,
+        (contract_id, user["team_id"]),
+    )
+    if not contract:
+        flash("Contrato no encontrado.", "danger")
+        return redirect_back("development_dashboard")
+    provider_track = contract["provider_service_track"] or query_one("SELECT service_track FROM teams WHERE id = ?", (user["team_id"],))["service_track"]
+    if provider_track != "web_html" or not contract["target_team_site_id"]:
+        flash("Este contrato no usa el editor web.", "warning")
+        return redirect(url_for("development_contract_detail", contract_id=contract_id))
+    if contract["paused_by_deadline"] or contract["status"] not in WEB_EDITOR_EDITABLE_STATUSES:
+        flash("El editor web solo se puede usar mientras el contrato esté en trabajo activo o devuelto a corrección.", "warning")
+        return redirect(url_for("development_contract_detail", contract_id=contract_id))
+    if len((html_source or "")) > WEB_EDITOR_HTML_MAX_CHARS:
+        flash(f"El HTML supera el máximo permitido de {WEB_EDITOR_HTML_MAX_CHARS} caracteres.", "danger")
+        return redirect(url_for("development_contract_detail", contract_id=contract_id))
+    if len((css_source or "")) > WEB_EDITOR_CSS_MAX_CHARS:
+        flash(f"El CSS supera el máximo permitido de {WEB_EDITOR_CSS_MAX_CHARS} caracteres.", "danger")
+        return redirect(url_for("development_contract_detail", contract_id=contract_id))
+    clean_html = sanitize_contract_web_html(html_source)
+    clean_css = sanitize_contract_web_css(css_source)
+    if not clean_html:
+        flash("La parte HTML no puede quedar vacía.", "danger")
+        return redirect(url_for("development_contract_detail", contract_id=contract_id))
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE team_sites SET draft_html = ?, draft_css = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (clean_html, clean_css, contract["target_team_site_id"]),
+        )
+        if contract["status"] == "active":
+            conn.execute("UPDATE contracts SET status = 'in_development' WHERE id = ?", (contract_id,))
+        log_action(conn, user["id"], "save_web_contract_editor", "team_site", contract["target_team_site_id"], f"contract={contract_id}")
+        conn.commit()
+    flash("Vista previa web guardada. Todavía no está publicada.", "success")
+    return redirect(url_for("development_contract_detail", contract_id=contract_id))
+
+
+@app.route("/desarrollo/contracts/<int:contract_id>/web-editor/restore", methods=["POST"])
+@role_required("desarrollo_team")
+def restore_web_contract_editor(contract_id: int):
+    user = current_user()
+    mode = (request.form.get("mode") or "published").strip().lower()
+    if mode not in {"published", "base"}:
+        mode = "base"
+    contract = query_one(
+        f"""
+        SELECT c.*, {CONTRACT_PROVIDER_SQL} AS provider_team_id_resolved
+        FROM contracts c
+        WHERE c.id = ? AND {CONTRACT_PROVIDER_SQL} = ?
+        """,
+        (contract_id, user["team_id"]),
+    )
+    if not contract:
+        flash("Contrato no encontrado.", "danger")
+        return redirect_back("development_dashboard")
+    provider_track = contract["provider_service_track"] or query_one("SELECT service_track FROM teams WHERE id = ?", (user["team_id"],))["service_track"]
+    if provider_track != "web_html" or not contract["target_team_site_id"]:
+        flash("Este contrato no usa el editor web.", "warning")
+        return redirect(url_for("development_contract_detail", contract_id=contract_id))
+    if contract["paused_by_deadline"] or contract["status"] not in WEB_EDITOR_EDITABLE_STATUSES:
+        flash("La restauración del borrador solo está disponible mientras el contrato está en trabajo activo o devuelto a corrección.", "warning")
+        return redirect(url_for("development_contract_detail", contract_id=contract_id))
+    with get_connection() as conn:
+        ok = restore_team_site_draft(conn, contract["target_team_site_id"], mode=mode)
+        if ok and contract["status"] == "active":
+            conn.execute("UPDATE contracts SET status = 'in_development' WHERE id = ?", (contract_id,))
+        if ok:
+            log_action(conn, user["id"], f"restore_web_contract_editor_{mode}", "team_site", contract["target_team_site_id"], f"contract={contract_id}")
+        conn.commit()
+    if not ok:
+        flash("No se pudo restaurar el borrador de la web.", "danger")
+    elif mode == "published":
+        flash("Borrador restaurado desde la última versión publicada.", "success")
+    else:
+        flash("Borrador restaurado desde la plantilla base segura del equipo.", "success")
+    return redirect(url_for("development_contract_detail", contract_id=contract_id))
+
+
 @app.route("/desarrollo/contracts/<int:contract_id>/submit", methods=["POST"])
 @role_required("desarrollo_team")
 def submit_delivery(contract_id: int):
@@ -4120,8 +4533,17 @@ def submit_delivery(contract_id: int):
     if contract["paused_by_deadline"]:
         flash("Este contrato está pausado por vencimiento de la fecha. Esperá la decisión del interventor.", "warning")
         return redirect_back("development_dashboard")
-    if not any([repo, code_text, uploaded_file and uploaded_file.filename]):
-        flash("La entrega debe incluir al menos código pegado, un link o un archivo.", "danger")
+    is_web_contract = (contract["provider_service_track"] == "web_html") and bool(contract["target_team_site_id"])
+    has_uploaded_file = bool(uploaded_file and uploaded_file.filename)
+    has_delivery_payload = any([repo, code_text, has_uploaded_file])
+    if not has_delivery_payload and is_web_contract:
+        with get_connection() as conn:
+            has_delivery_payload = team_site_has_editable_draft(conn, contract["target_team_site_id"])
+    if not has_delivery_payload:
+        if is_web_contract:
+            flash("La entrega web necesita al menos un borrador guardado en el editor, un link, código pegado o un archivo.", "danger")
+        else:
+            flash("La entrega debe incluir al menos código pegado, un link o un archivo.", "danger")
         return redirect_back("development_dashboard")
 
     try:
@@ -4477,9 +4899,10 @@ def activation_review(contract_id: int):
             (new_status, decision, user['id'], comment or 'Sin comentario', f'activation_{decision}', contract_id),
         )
         if decision == "rejected":
+            client_team_id = contract_client_team_id(contract)
             team_wallet = conn.execute(
                 "SELECT * FROM wallets WHERE owner_type = 'team' AND owner_id = ?",
-                (contract["robotics_team_id"],),
+                (client_team_id,),
             ).fetchone()
             if team_wallet and contract["reserved_amount"]:
                 conn.execute(
@@ -4539,18 +4962,19 @@ def deadline_cancel(contract_id: int):
         if contract["payment_released"]:
             flash("Ese contrato ya liberó el pago y no puede cancelarse por vencimiento.", "warning")
             return redirect(url_for("interventor_dashboard"))
-        robotics_wallet = conn.execute(
+        client_team_id = contract_client_team_id(contract)
+        client_wallet = conn.execute(
             "SELECT * FROM wallets WHERE owner_type = 'team' AND owner_id = ?",
-            (contract["robotics_team_id"],),
+            (client_team_id,),
         ).fetchone()
-        if robotics_wallet and contract["reserved_amount"]:
+        if client_wallet and contract["reserved_amount"]:
             conn.execute(
                 "UPDATE wallets SET balance = balance + ? WHERE id = ?",
-                (contract["reserved_amount"], robotics_wallet["id"]),
+                (contract["reserved_amount"], client_wallet["id"]),
             )
             conn.execute(
                 "INSERT INTO transactions (from_wallet_id, to_wallet_id, amount, transaction_type, description, created_by_user_id, cycle_id) VALUES (NULL, ?, ?, 'refund', ?, ?, ?)",
-                (robotics_wallet["id"], contract["reserved_amount"], f"Cancelación por vencimiento del contrato #{contract_id}. Motivo: {comment}", user["id"], contract['cycle_id']),
+                (client_wallet["id"], contract["reserved_amount"], f"Cancelación por vencimiento del contrato #{contract_id}. Motivo: {comment}", user["id"], contract['cycle_id']),
             )
         conn.execute(
             "UPDATE contracts SET status = 'cancelled', reserved_amount = 0, paused_by_deadline = 0, pause_reason = ?, closed_at = CURRENT_TIMESTAMP, last_interventor_user_id = ?, last_interventor_comment = ?, last_interventor_action = 'deadline_cancel', last_interventor_signed_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -4558,7 +4982,7 @@ def deadline_cancel(contract_id: int):
         )
         log_action(conn, user["id"], "cancel_deadline_contract", "contract", contract_id, comment)
         conn.commit()
-    flash("Contrato cancelado por vencimiento y fondos devueltos a robótica.", "success")
+    flash("Contrato cancelado por vencimiento y fondos devueltos al equipo cliente.", "success")
     return redirect(url_for("interventor_dashboard"))
 
 
@@ -4584,19 +5008,29 @@ def final_review(contract_id: int):
             "INSERT INTO contract_reviews (contract_id, review_stage, interventor_user_id, decision, comment) VALUES (?, 'final_delivery', ?, ?, ?)",
             (contract_id, user["id"], decision, comment or "Sin comentario"),
         ).lastrowid
+        provider_team_id = contract_provider_team_id(contract)
+        client_team_id = contract_client_team_id(contract)
+        provider_track = contract["provider_service_track"]
+        if not provider_track and provider_team_id:
+            provider_team = conn.execute("SELECT service_track FROM teams WHERE id = ?", (provider_team_id,)).fetchone()
+            provider_track = provider_team["service_track"] if provider_team else None
+        is_web_contract = provider_track == "web_html" and bool(contract["target_team_site_id"])
         if decision == "approved":
-            dev_wallet = conn.execute(
+            if is_web_contract and not publish_team_site_from_draft(conn, contract["target_team_site_id"]):
+                flash("No hay un borrador web válido para publicar todavía. Pedile al equipo proveedor que guarde la vista previa antes de aprobar.", "warning")
+                return redirect(url_for("interventor_dashboard"))
+            provider_wallet = conn.execute(
                 "SELECT * FROM wallets WHERE owner_type = 'team' AND owner_id = ?",
-                (contract["development_team_id"],),
+                (provider_team_id,),
             ).fetchone()
-            if dev_wallet and contract["reserved_amount"]:
+            if provider_wallet and contract["reserved_amount"]:
                 conn.execute(
                     "UPDATE wallets SET balance = balance + ? WHERE id = ?",
-                    (contract["reserved_amount"], dev_wallet["id"]),
+                    (contract["reserved_amount"], provider_wallet["id"]),
                 )
                 conn.execute(
                     "INSERT INTO transactions (from_wallet_id, to_wallet_id, amount, transaction_type, description, created_by_user_id, cycle_id) VALUES (NULL, ?, ?, 'contract_payment', ?, ?, ?)",
-                    (dev_wallet["id"], contract["reserved_amount"], f"Pago liberado del contrato #{contract_id}", user["id"], contract['cycle_id']),
+                    (provider_wallet["id"], contract["reserved_amount"], f"Pago liberado del contrato #{contract_id}", user["id"], contract['cycle_id']),
                 )
             conn.execute(
                 "UPDATE contracts SET payment_released = 1, reserved_amount = 0, status = 'closed', paused_by_deadline = 0, paused_at = NULL, pause_reason = NULL, closed_at = CURRENT_TIMESTAMP, last_interventor_user_id = ?, last_interventor_comment = ?, last_interventor_action = ?, last_interventor_signed_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -4612,18 +5046,18 @@ def final_review(contract_id: int):
             if latest_delivery:
                 conn.execute("UPDATE deliveries SET status = 'correction_required' WHERE id = ?", (latest_delivery["id"],))
         else:
-            robotics_wallet = conn.execute(
+            client_wallet = conn.execute(
                 "SELECT * FROM wallets WHERE owner_type = 'team' AND owner_id = ?",
-                (contract["robotics_team_id"],),
+                (client_team_id,),
             ).fetchone()
-            if robotics_wallet and contract["reserved_amount"]:
+            if client_wallet and contract["reserved_amount"]:
                 conn.execute(
                     "UPDATE wallets SET balance = balance + ? WHERE id = ?",
-                    (contract["reserved_amount"], robotics_wallet["id"]),
+                    (contract["reserved_amount"], client_wallet["id"]),
                 )
                 conn.execute(
                     "INSERT INTO transactions (from_wallet_id, to_wallet_id, amount, transaction_type, description, created_by_user_id, cycle_id) VALUES (NULL, ?, ?, 'refund', ?, ?, ?)",
-                    (robotics_wallet["id"], contract["reserved_amount"], f"Devolución por rechazo final del contrato #{contract_id}", user["id"], contract['cycle_id']),
+                    (client_wallet["id"], contract["reserved_amount"], f"Devolución por rechazo final del contrato #{contract_id}", user["id"], contract['cycle_id']),
                 )
             conn.execute(
                 "UPDATE contracts SET status = 'cancelled', reserved_amount = 0, paused_by_deadline = 0, paused_at = NULL, last_interventor_user_id = ?, last_interventor_comment = ?, last_interventor_action = ?, last_interventor_signed_at = CURRENT_TIMESTAMP WHERE id = ?",

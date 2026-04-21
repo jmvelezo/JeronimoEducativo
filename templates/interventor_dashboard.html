@@ -55,6 +55,7 @@
 
   <section class="card">
     <h2>Entregas pendientes de revisión</h2>
+    <p class="muted">En contratos web, aprobar la entrega final publica la versión borrador actual de la web del equipo cliente.</p>
     {% for c in pending_delivery %}
       <article class="list-item">
         <strong>Contrato #{{ c['id'] }}</strong>
@@ -80,10 +81,13 @@
             <pre class="code-box">{{ c['code_text'] }}</pre>
           </details>
         {% endif %}
+        {% if c['provider_service_track'] == 'web_html' %}
+          <p><a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=c['id']) }}">Abrir detalle completo y vista previa web</a></p>
+        {% endif %}
         <form method="post" action="{{ url_for('final_review', contract_id=c['id']) }}" class="form-grid inline-form">
           <label>Decisión
             <select name="decision">
-              <option value="approved">Aprobar y liberar pago</option>
+              <option value="approved">Aprobar{% if c['provider_service_track'] == 'web_html' %} y publicar web{% else %} y liberar pago{% endif %}</option>
               <option value="correction_required">Devolver a corrección</option>
               <option value="rejected">Rechazar y devolver fondos</option>
             </select>

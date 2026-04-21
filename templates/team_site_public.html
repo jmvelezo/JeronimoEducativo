@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>{{ site_css|safe }}</style>
+
+<section class="team-site-shell">
+  <div class="team-site-banner">
+    <div class="team-site-logo-grid">
+      <div class="team-site-logo-wrap">
+        {% if site['logo_stored_filename'] %}
+          <img src="{{ url_for('public_team_logo_file', stored_filename=site['logo_stored_filename']) }}" alt="Logo de {{ site['team_name'] }}">
+        {% elif site['preview_gallery_image'] %}
+          <img src="{{ url_for('public_team_gallery_file', stored_filename=site['preview_gallery_image']) }}" alt="Vista del equipo {{ site['team_name'] }}">
+        {% else %}
+          <div class="team-logo-placeholder">{{ site['team_name'][:2]|upper }}</div>
+        {% endif %}
+      </div>
+      <div>
+        <span class="badge">Web pública del equipo</span>
+        <h1>{{ site['team_name'] }}</h1>
+        <p>{{ site['profile_blurb'] or 'Esta página funciona como la presencia pública del equipo dentro de JeroCoin. Más adelante puede evolucionar como parte de un contrato web.' }}</p>
+        <div class="button-row wrap top-gap">
+          <a class="btn-link secondary" href="{{ url_for('home') }}">Volver al inicio</a>
+          <a class="btn-link secondary" href="{{ url_for('project_rules') }}">Ver reglas</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <article class="team-site-main">
+    <div class="team-site-content">
+      {{ site_html|safe }}
+    </div>
+  </article>
+</section>
+{% endblock %}

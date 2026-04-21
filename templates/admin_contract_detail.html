@@ -22,6 +22,7 @@
       <div><strong>Equipo proveedor:</strong> {{ contract['provider_name'] or contract['development_name'] }}</div>
       <div><strong>Línea proveedora:</strong> {{ 'Web / HTML' if (contract['provider_service_track_resolved'] or contract['provider_service_track']) == 'web_html' else ('Programación' if (contract['provider_service_track_resolved'] or contract['provider_service_track']) == 'programacion' else (contract['provider_service_track_resolved'] or contract['provider_service_track'] or '—')) }}</div>
       <div><strong>Portfolio:</strong> {{ contract['portfolio_title'] or '—' }}</div>
+      {% if contract['web_request_kind'] %}<div><strong>Modo web:</strong> {{ web_request_kind_options.get(contract['web_request_kind'], contract['web_request_kind']) }}</div>{% endif %}
       <div><strong>Monto pedido:</strong> {{ contract['requested_amount'] }} JeroCoin</div>
       <div><strong>Reserva actual:</strong> {{ contract['reserved_amount'] }} JeroCoin</div>
       <div><strong>Pago liberado:</strong> {{ 'sí' if contract['payment_released'] else 'no' }}</div>
@@ -46,6 +47,36 @@
     <p class="muted top-gap">Esta vista sirve para revisar si el contrato recorrió bien todo el circuito: reserva, activación, entrega, validación y pago o devolución.</p>
   </section>
 </div>
+
+{% if contract['target_team_site_id'] and team_site_preview_doc %}
+<section class="card web-contract-preview-card admin-web-preview-card">
+  <div class="section-header compact">
+    <div>
+      <h2>Vista previa web del contrato</h2>
+      <p class="muted">Esta es la versión borrador de la web que se está trabajando dentro del contrato. Cliente e interventor pueden revisarla, pero no editarla desde acá. Si la revisión final se aprueba, esta misma versión se publica.</p>
+    </div>
+    <div class="button-row wrap">
+      {% if target_team_site and target_team_site['status'] == 'published' %}
+        <a class="btn-link secondary" href="{{ url_for('public_team_site', slug=target_team_site['slug']) }}" target="_blank" rel="noopener">Ver web publicada actual</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="kv-list compact bottom-gap">
+    {% if target_team_site %}
+      <div><strong>Web objetivo:</strong> {{ target_team_site['team_name'] }}</div>
+      <div><strong>Slug:</strong> /equipos/{{ target_team_site['slug'] }}</div>
+      <div><strong>Estado actual:</strong> <span class="badge">{{ target_team_site['status'] }}</span></div>
+      {% if contract['web_request_kind'] %}<div><strong>Trabajo pedido:</strong> {{ web_request_kind_options.get(contract['web_request_kind'], contract['web_request_kind']) }}</div>{% endif %}
+    {% endif %}
+  </div>
+  <div class="web-preview-shell top-gap">
+    <div class="web-preview-header">
+      <strong>Vista previa</strong>
+      <span class="muted">Todavía no está publicada.</span>
+    </div>
+    <iframe class="web-preview-frame" sandbox referrerpolicy="no-referrer" srcdoc="{{ team_site_preview_doc|e }}" title="Vista previa web del contrato"></iframe>
+  </div>
+</section>
 
 <div class="grid two">
   <section class="card">

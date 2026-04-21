@@ -129,7 +129,7 @@
           {{ c['provider_name'] or c['development_name'] }}
           {% if c['provider_service_track_resolved'] %}<br><span class="muted">{{ service_track_options.get(c['provider_service_track_resolved'], c['provider_service_track_resolved']) }}</span>{% endif %}
         </td>
-        <td>{{ c['portfolio_title'] or '—' }}</td>
+        <td>{{ c['portfolio_title'] or '—' }}{% if c['web_request_kind'] %}<br><span class='badge'>{{ web_request_kind_options.get(c['web_request_kind'], c['web_request_kind']) }}</span>{% endif %}</td>
         <td>{{ c['requested_amount'] }}</td>
         <td>{{ c['reserved_amount'] }}</td>
         <td>{{ c['status'] }}{% if c['paused_by_deadline'] %} · pausado{% endif %}{% if latest_return_reviews.get(c['id']) %}<br><span class="badge warning">devolución</span>{% endif %}</td>

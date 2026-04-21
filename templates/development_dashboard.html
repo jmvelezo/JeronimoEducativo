@@ -9,6 +9,7 @@
     <a class="btn-link secondary" href="{{ url_for('team_profile_manage') }}">Editar mi equipo</a>
     <a class="btn-link secondary" href="{{ url_for('marketplace') }}">Ver mercado</a>
     <a class="btn-link secondary" href="{{ url_for('team_rules_page') }}">Ver reglas</a>
+    {% if team_site_public_url %}<a class="btn-link secondary" href="{{ team_site_public_url }}" target="_blank" rel="noopener">Abrir mi web pública</a>{% elif team_site %}<span class="badge secondary">{{ team_site_state_label }}</span>{% endif %}
     <a class="btn-link" href="{{ url_for('development_new_portfolio') }}">Crear portfolio</a>
   </div>
 </div>
@@ -37,6 +38,7 @@
           {% else %}
             <span class="badge">Puede contratar web / HTML</span>
           {% endif %}
+          <span class="badge secondary">{{ team_site_state_label }}</span>
         </div>
       </div>
     </div>
@@ -156,6 +158,7 @@
           <strong>Contrato #{{ c['id'] }}</strong> con {{ c['provider_name'] or c['development_name'] }}
           <div>Estado: <span class="badge">{{ c['status'] }}</span>{% if c['paused_by_deadline'] %} <span class="badge">pausado por fecha</span>{% endif %}</div>
           <div>Servicio: {{ portfolio_service_category_options.get(c['service_category'] or 'programacion_robotica', c['service_category'] or 'programacion_robotica') }}</div>
+          {% if c['web_request_kind'] %}<div>Modo web: {{ web_request_kind_options.get(c['web_request_kind'], c['web_request_kind']) }}</div>{% endif %}
           {% if c['provider_service_track'] %}<div>Línea proveedora: {{ service_track_options.get(c['provider_service_track'], c['provider_service_track']) }}</div>{% endif %}
           <div>Monto: {{ c['requested_amount'] }} JeroCoin</div>
           <div>Fecha esperada de entrega: {{ c['requested_delivery_date'] or '—' }}</div>
@@ -191,6 +194,7 @@
           <strong>Contrato #{{ c['id'] }}</strong> con {{ c['client_name'] or c['robotics_name'] }}
           <div>Estado: <span class="badge">{{ c['status'] }}</span>{% if c['paused_by_deadline'] %} <span class="badge">pausado por fecha</span>{% endif %}</div>
           <div>Servicio: {{ portfolio_service_category_options.get(c['service_category'] or 'programacion_robotica', c['service_category'] or 'programacion_robotica') }}</div>
+          {% if c['web_request_kind'] %}<div>Modo web: {{ web_request_kind_options.get(c['web_request_kind'], c['web_request_kind']) }}</div>{% endif %}
           <div>Monto: {{ c['requested_amount'] }} JeroCoin</div>
           <div>Fecha esperada de entrega: {{ c['requested_delivery_date'] or '—' }}</div>
         </div>

@@ -23,6 +23,7 @@
       <div><strong>Equipo cliente:</strong> {{ contract['client_name'] or contract['robotics_name'] }}</div>
       <div><strong>Equipo proveedor:</strong> {{ contract['provider_name'] or contract['development_name'] }}</div>
       <div><strong>Portfolio:</strong> {{ contract['portfolio_title'] or '—' }}</div>
+      {% if contract['web_request_kind'] %}<div><strong>Modo web:</strong> {{ web_request_kind_options.get(contract['web_request_kind'], contract['web_request_kind']) }}</div>{% endif %}
       <div><strong>Estado:</strong> <span class="badge">{{ contract['status'] }}</span>{% if contract['paused_by_deadline'] %} <span class="badge warning">pausado por fecha</span>{% endif %}</div>
       <div><strong>Monto:</strong> {{ contract['requested_amount'] }} JeroCoin</div>
       <div><strong>Reserva actual:</strong> {{ contract['reserved_amount'] }} JeroCoin</div>
@@ -66,6 +67,134 @@
 </section>
 {% endif %}
 
+{% if contract['target_team_site_id'] and team_site_preview_doc %}
+<section class="card web-contract-preview-card {% if can_edit_web_contract %}editor-enabled{% endif %}">
+  <div class="section-header compact">
+    <div>
+      <h2>{% if can_edit_web_contract %}Editor web del contrato{% else %}Vista previa web del contrato{% endif %}</h2>
+      <p class="muted">
+        {% if can_edit_web_contract %}
+          Este espacio se usa para construir la web del equipo cliente dentro del contrato. El cambio se guarda como borrador y todavía no queda publicado.
+        {% else %}
+          Acá se ve la versión borrador de la web que se está trabajando. Solo el equipo proveedor web puede editarla.
+        {% endif %}
+      </p>
+    </div>
+    <div class="button-row wrap">
+      {% if target_team_site and target_team_site['status'] == 'published' %}
+        <a class="btn-link secondary" href="{{ url_for('public_team_site', slug=target_team_site['slug']) }}" target="_blank" rel="noopener">Ver web publicada actual</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="kv-list compact bottom-gap">
+    {% if target_team_site %}
+      <div><strong>Web objetivo:</strong> {{ target_team_site['team_name'] }}</div>
+      <div><strong>Slug:</strong> /equipos/{{ target_team_site['slug'] }}</div>
+      <div><strong>Estado público actual:</strong> <span class="badge">{{ target_team_site['status'] }}</span></div>
+      {% if contract['web_request_kind'] %}<div><strong>Trabajo pedido:</strong> {{ web_request_kind_options.get(contract['web_request_kind'], contract['web_request_kind']) }}</div>{% endif %}
+    {% endif %}
+  </div>
+
+  {% if can_edit_web_contract %}
+  <div class="warning-box bottom-gap">
+    <strong>Editor seguro habilitado.</strong> Solo se aceptan HTML y CSS. El sistema bloquea scripts, iframes, formularios embebidos y eventos peligrosos. Límite sugerido: hasta 35.000 caracteres de HTML y 12.000 de CSS.
+  </div>
+  <form method="post" action="{{ url_for('save_web_contract_editor', contract_id=contract['id']) }}" class="web-editor-form" id="webEditorForm">
+    <div class="web-editor-grid">
+      <label>HTML de la página
+        <textarea name="site_html" id="teamSiteHtmlInput" rows="22" spellcheck="false">{{ team_site_preview_html or '' }}</textarea>
+      </label>
+      <label>CSS de la página
+        <textarea name="site_css" id="teamSiteCssInput" rows="22" spellcheck="false">{{ team_site_preview_css or '' }}</textarea>
+      </label>
+    </div>
+    <div class="button-row wrap top-gap">
+      <button type="submit">Guardar borrador web</button>
+      <span class="muted">Cuando el interventor apruebe la entrega final, esta versión se publica como web pública del equipo cliente. Por ahora esto solo actualiza el borrador.</span>
+    </div>
+  </form>
+  <div class="button-row wrap top-gap">
+    <form method="post" action="{{ url_for('restore_web_contract_editor', contract_id=contract['id']) }}">
+      <input type="hidden" name="mode" value="base">
+      <button type="submit" class="secondary">Restaurar plantilla base</button>
+    </form>
+    {% if target_team_site and target_team_site['status'] == 'published' and target_team_site['published_html'] %}
+    <form method="post" action="{{ url_for('restore_web_contract_editor', contract_id=contract['id']) }}">
+      <input type="hidden" name="mode" value="published">
+      <button type="submit" class="secondary">Recuperar última versión publicada</button>
+    </form>
+    {% endif %}
+  </div>
+  {% elif viewer_role == 'desarrollo_team' %}
+  <div class="warning-box top-gap">
+    <strong>Edición temporalmente bloqueada.</strong> La web no se puede modificar mientras el contrato está enviado a revisión, pausado por fecha o ya cerrado. Si el interventor devuelve correcciones, el editor vuelve a habilitarse.
+  </div>
+  {% endif %}
+
+  <div class="web-preview-shell top-gap">
+    <div class="web-preview-header">
+      <strong>Vista previa en vivo</strong>
+      <span class="muted">Se actualiza al escribir. No está publicada todavía.</span>
+    </div>
+    <iframe
+      id="teamSitePreviewFrame"
+      class="web-preview-frame"
+      sandbox
+      referrerpolicy="no-referrer"
+      srcdoc="{{ team_site_preview_doc|e }}"
+      title="Vista previa de la web del contrato"
+    ></iframe>
+  </div>
+</section>
+
+{% if can_edit_web_contract %}
+<script>
+(function() {
+  const htmlInput = document.getElementById('teamSiteHtmlInput');
+  const cssInput = document.getElementById('teamSiteCssInput');
+  const previewFrame = document.getElementById('teamSitePreviewFrame');
+  if (!htmlInput || !cssInput || !previewFrame) return;
+
+  const basePreviewDoc = ({ html, css }) => `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #020617; color: #e2e8f0; }
+    .preview-shell { min-height: 100vh; padding: 18px; background: radial-gradient(circle at top, rgba(99,102,241,0.16), transparent 28%), linear-gradient(180deg, #0f172a, #020617); }
+    .preview-frame { max-width: 1080px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 28px; background: rgba(15,23,42,0.92); box-shadow: 0 28px 60px rgba(2,8,23,0.38); overflow: hidden; }
+    .preview-banner { padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.92rem; color: rgba(226,232,240,0.8); background: rgba(255,255,255,0.03); }
+    .preview-content { padding: 22px; }
+    ${css || ''}
+  </style>
+</head>
+<body>
+  <div class="preview-shell">
+    <div class="preview-frame">
+      <div class="preview-banner">Vista previa de la web del equipo · No publicada todavía</div>
+      <div class="preview-content team-site-content">
+        ${html || '<section class="site-section"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'}
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const refresh = () => {
+    previewFrame.srcdoc = basePreviewDoc({ html: htmlInput.value.trim(), css: cssInput.value.trim() });
+  };
+
+  htmlInput.addEventListener('input', refresh);
+  cssInput.addEventListener('input', refresh);
+})();
+</script>
+{% endif %}
+{% endif %}
+
 {% if viewer_role == 'desarrollo_team' and can_submit_delivery %}
 <section class="card">
   <div class="section-header compact">
@@ -88,7 +217,7 @@
     <label>Archivo adjunto
       <input type="file" name="delivery_file" accept=".py,.txt,.md,.json,.csv,.zip,.rar,.7z,.ino,.c,.cpp,.h,.java,.js,.ts">
     </label>
-    <p class="muted">La entrega debe incluir al menos una de estas tres cosas: código pegado, link o archivo.</p>
+    <p class="muted">{% if current_contract["target_team_site_id"] %}Para contratos web también podés entregar usando solo el borrador guardado en este editor, aunque no adjuntes archivo ni pegues código.{% else %}La entrega debe incluir al menos una de estas tres cosas: código pegado, link o archivo.{% endif %}</p>
     <button type="submit">Enviar a revisión</button>
   </form>
 </section>

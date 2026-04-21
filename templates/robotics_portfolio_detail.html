@@ -30,6 +30,13 @@
           <span class="badge">Contrato: {{ settings['contract_price'] }} JeroCoin</span>
           <span class="badge">Proyectos activos: {{ active_contracts }}</span>
         </div>
+        <div class="button-row wrap top-gap">
+          {% if portfolio['public_site_slug'] %}
+            <a class="btn-link secondary" href="{{ url_for('public_team_site', slug=portfolio['public_site_slug']) }}" target="_blank" rel="noopener">Ver web pública del equipo</a>
+          {% else %}
+            <span class="badge secondary">Este equipo todavía no publicó su web pública</span>
+          {% endif %}
+        </div>
       </div>
     </div>
     {% if dev_gallery %}
@@ -103,6 +110,7 @@
         <div><strong>Monto:</strong> {{ current_contract['requested_amount'] }} JeroCoin</div>
         <div><strong>Reserva actual:</strong> {{ current_contract['reserved_amount'] }} JeroCoin</div>
         <div><strong>Fecha pedida:</strong> {{ current_contract['requested_delivery_date'] or '—' }}</div>
+        {% if current_contract['web_request_kind'] %}<div><strong>Modo web:</strong> {{ web_request_kind_options.get(current_contract['web_request_kind'], current_contract['web_request_kind']) }}</div>{% endif %}
         {% if current_contract['request_message'] %}
           <div><strong>Pedido:</strong> {{ current_contract['request_message'] }}</div>
         {% endif %}
@@ -164,6 +172,7 @@
             <span class="badge">{{ last_contract['status'] }}</span>
             <span class="muted">{{ last_contract['closed_at'] or last_contract['created_at'] }}</span>
           </div>
+          {% if last_contract['web_request_kind'] %}<p><strong>Modo web:</strong> {{ web_request_kind_options.get(last_contract['web_request_kind'], last_contract['web_request_kind']) }}</p>{% endif %}
           {% if last_contract['last_interventor_username'] %}
             <p><strong>Última firma:</strong> {{ last_contract['last_interventor_username'] }} · {{ last_contract['last_interventor_action'] or 'firma' }}</p>
             <p><strong>Comentario:</strong> {{ last_contract['last_interventor_comment'] or 'Sin comentario' }}</p>
@@ -175,6 +184,18 @@
       {% endif %}
       <h2>{% if last_contract %}Pedir un nuevo contrato{% else %}Reservar contrato{% endif %}</h2>
       <p class="muted">Tu equipo puede tener hasta 2 contratos abiertos a la vez. Cuando uno se cierra, ese lugar vuelve a quedar libre.</p>
+      {% if contract_request_web_context %}
+        <div class="subsection top-gap">
+          <h3>{{ contract_request_web_context['label'] }}</h3>
+          <p>{{ contract_request_web_context['summary'] }}</p>
+          <p class="muted">{{ contract_request_web_context['current_state'] }}</p>
+          <div class="chip-row">
+            <span class="badge">{{ contract_request_web_context['label'] }}</span>
+            {% if contract_request_web_context['has_public_site'] %}<span class="badge">web actual disponible</span>{% else %}<span class="badge">primera publicación</span>{% endif %}
+          </div>
+          {% if contract_request_web_context['preview_url'] %}<p class="top-gap"><a href="{{ contract_request_web_context['preview_url'] }}" target="_blank" rel="noopener">Ver web actual de mi equipo</a></p>{% endif %}
+        </div>
+      {% endif %}
       {% if robotics_open_contracts >= 2 %}
         <div class="warning-box top-gap">Tu equipo ya tiene 2 contratos abiertos en este ciclo. Cerrá o cancelá uno antes de reservar otro.</div>
       {% endif %}

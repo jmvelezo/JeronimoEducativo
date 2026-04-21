@@ -2,6 +2,8 @@ import os
 import sqlite3
 from pathlib import Path
 from typing import Any
+import html
+import re
 
 BASE_DIR = Path(__file__).resolve().parent
 SCHEMA = BASE_DIR / "schema.sql"
@@ -53,6 +55,256 @@ TEAM_EXTRA_COLUMNS = {
     "logo_stored_filename": "TEXT",
 }
 
+TEAM_SITE_STATUS_VALUES = ("draft", "published")
+
+
+def _slugify_team_site_name(value: str) -> str:
+    value = (value or "").strip().lower()
+    value = re.sub(r"[^a-z0-9áéíóúüñ\s-]", "", value, flags=re.IGNORECASE)
+    replacements = {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ü": "u", "ñ": "n"}
+    for src, target in replacements.items():
+        value = value.replace(src, target)
+    value = re.sub(r"[\s_]+", "-", value)
+    value = re.sub(r"-+", "-", value).strip("-")
+    return value or "equipo"
+
+
+def build_team_site_slug(conn: sqlite3.Connection, team_name: str, *, exclude_team_id: int | None = None) -> str:
+    base_slug = _slugify_team_site_name(team_name)
+    slug = base_slug
+    suffix = 2
+    while True:
+        if exclude_team_id is None:
+            row = conn.execute("SELECT team_id FROM team_sites WHERE slug = ?", (slug,)).fetchone()
+        else:
+            row = conn.execute("SELECT team_id FROM team_sites WHERE slug = ? AND team_id != ?", (slug, exclude_team_id)).fetchone()
+        if not row:
+            return slug
+        slug = f"{base_slug}-{suffix}"
+        suffix += 1
+
+
+def default_team_site_html(team_name: str, course_label: str | None, service_track: str | None) -> str:
+    safe_name = html.escape((team_name or "Equipo").strip())
+    safe_course = html.escape((course_label or "Sin curso").strip() or "Sin curso")
+    track_label = "Equipo web / HTML" if service_track == "web_html" else "Equipo desarrollador"
+    safe_track = html.escape(track_label)
+    return f"""
+<section class="site-section site-hero">
+  <span class="site-kicker">JeroCoin · Web pública del equipo</span>
+  <h1>{safe_name}</h1>
+  <p class="site-lead">Esta es la primera versión de la web pública del equipo. Más adelante puede evolucionar como parte de un contrato web dentro del proyecto.</p>
+  <div class="site-chip-row">
+    <span>{safe_course}</span>
+    <span>{safe_track}</span>
+  </div>
+</section>
+
+<section class="site-section">
+  <h2>¿Quiénes somos?</h2>
+  <p>Este espacio está preparado para presentar al equipo, su estilo, sus proyectos y su identidad visual. Por ahora funciona como una base simple y clara para que luego pueda ser mejorada.</p>
+</section>
+
+<section class="site-section site-grid-two">
+  <div class="site-card">
+    <h3>Qué podemos mostrar acá</h3>
+    <ul>
+      <li>Presentación del equipo.</li>
+      <li>Trabajos destacados y capturas.</li>
+      <li>Objetivos, estilo e identidad visual.</li>
+      <li>Botones o accesos a otras secciones del proyecto.</li>
+    </ul>
+  </div>
+  <div class="site-card">
+    <h3>Siguiente paso</h3>
+    <p>Cuando el equipo reciba o desarrolle un trabajo web, esta página puede crecer y transformarse en una experiencia más visual y personalizada.</p>
+  </div>
+</section>
+""".strip()
+
+
+def default_team_site_css(service_track: str | None) -> str:
+    accent = "#5eead4" if service_track == "web_html" else "#8b5cf6"
+    accent_soft = "rgba(94, 234, 212, 0.18)" if service_track == "web_html" else "rgba(139, 92, 246, 0.18)"
+    return f"""
+.team-site-shell {{
+  max-width: 1040px;
+  margin: 0 auto;
+  display: grid;
+  gap: 1rem;
+}}
+.team-site-banner {{
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 22px;
+  padding: 1.15rem 1.25rem;
+  background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(30,41,59,0.92));
+  box-shadow: 0 18px 40px rgba(2,8,23,0.35);
+}}
+.team-site-banner h1 {{ margin: 0 0 0.35rem; }}
+.team-site-banner p {{ margin: 0; color: rgba(226,232,240,0.82); }}
+.team-site-main {{
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 26px;
+  padding: 1.4rem;
+  background: linear-gradient(180deg, rgba(15,23,42,0.94), rgba(15,23,42,0.86));
+  box-shadow: 0 18px 40px rgba(2,8,23,0.32);
+}}
+.team-site-content {{ display: grid; gap: 1rem; }}
+.team-site-content .site-section {{
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.03);
+  border-radius: 22px;
+  padding: 1.15rem;
+}}
+.team-site-content .site-hero {{
+  background: linear-gradient(135deg, {accent_soft}, rgba(255,255,255,0.04));
+  border-color: rgba(255,255,255,0.10);
+}}
+.team-site-content .site-kicker {{
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .3rem .7rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.92);
+  font-size: .8rem;
+  letter-spacing: .02em;
+  margin-bottom: .75rem;
+}}
+.team-site-content h1,
+.team-site-content h2,
+.team-site-content h3 {{ margin-top: 0; }}
+.team-site-content .site-lead {{
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: rgba(226,232,240,0.92);
+}}
+.team-site-content .site-chip-row {{ display: flex; gap: .55rem; flex-wrap: wrap; margin-top: .8rem; }}
+.team-site-content .site-chip-row span {{
+  display: inline-flex;
+  align-items: center;
+  padding: .38rem .78rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(226,232,240,0.95);
+  font-size: .88rem;
+}}
+.team-site-content .site-grid-two {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}}
+.team-site-content .site-card {{
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.025);
+  padding: 1rem;
+}}
+.team-site-content ul {{ margin: .4rem 0 0; padding-left: 1.2rem; }}
+.team-site-content a {{ color: {accent}; }}
+.team-site-logo-grid {{
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}}
+.team-site-logo-wrap {{
+  width: 88px;
+  height: 88px;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}}
+.team-site-logo-wrap img {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
+.team-site-logo-wrap .team-logo-placeholder {{ width: 100%; height: 100%; display:flex; align-items:center; justify-content:center; font-size: 1.35rem; font-weight: 700; }}
+@media (max-width: 720px) {{
+  .team-site-logo-grid {{ grid-template-columns: 1fr; }}
+}}
+""".strip()
+
+
+def ensure_team_site_for_team(conn: sqlite3.Connection, team: sqlite3.Row | dict[str, Any]) -> int | None:
+    team_type = team["team_type"] if isinstance(team, sqlite3.Row) else team.get("team_type")
+    if team_type != "desarrollo":
+        return None
+    team_id = team["id"] if isinstance(team, sqlite3.Row) else team.get("id")
+    existing = conn.execute("SELECT id FROM team_sites WHERE team_id = ?", (team_id,)).fetchone()
+    name = team["name"] if isinstance(team, sqlite3.Row) else team.get("name")
+    course_label = team["course_label"] if isinstance(team, sqlite3.Row) else team.get("course_label")
+    service_track = team["service_track"] if isinstance(team, sqlite3.Row) else team.get("service_track")
+    html_content = default_team_site_html(name, course_label, service_track)
+    css_content = default_team_site_css(service_track)
+    if existing:
+        conn.execute(
+            """
+            UPDATE team_sites
+            SET slug = COALESCE(NULLIF(slug, ''), ?),
+                draft_html = COALESCE(NULLIF(draft_html, ''), ?),
+                draft_css = COALESCE(NULLIF(draft_css, ''), ?),
+                published_html = COALESCE(NULLIF(published_html, ''), ?),
+                published_css = COALESCE(NULLIF(published_css, ''), ?),
+                status = COALESCE(NULLIF(status, ''), 'published'),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE team_id = ?
+            """,
+            (build_team_site_slug(conn, name, exclude_team_id=team_id), html_content, css_content, html_content, css_content, team_id),
+        )
+        return existing["id"]
+    slug = build_team_site_slug(conn, name, exclude_team_id=team_id)
+    cur = conn.execute(
+        """
+        INSERT INTO team_sites (team_id, slug, status, draft_html, draft_css, published_html, published_css, created_at, updated_at)
+        VALUES (?, ?, 'published', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """,
+        (team_id, slug, html_content, css_content, html_content, css_content),
+    )
+    return cur.lastrowid
+
+
+def ensure_contract_team_site_for_team(conn: sqlite3.Connection, team: sqlite3.Row | dict[str, Any]) -> int | None:
+    team_id = team["id"] if isinstance(team, sqlite3.Row) else team.get("id")
+    team_type = team["team_type"] if isinstance(team, sqlite3.Row) else team.get("team_type")
+    name = team["name"] if isinstance(team, sqlite3.Row) else team.get("name")
+    course_label = team["course_label"] if isinstance(team, sqlite3.Row) else team.get("course_label")
+    service_track = team["service_track"] if isinstance(team, sqlite3.Row) else team.get("service_track")
+    if team_type == "desarrollo":
+        return ensure_team_site_for_team(conn, team)
+    existing = conn.execute("SELECT id FROM team_sites WHERE team_id = ?", (team_id,)).fetchone()
+    html_content = default_team_site_html(name, course_label, service_track)
+    css_content = default_team_site_css(service_track)
+    if existing:
+        conn.execute(
+            """
+            UPDATE team_sites
+            SET slug = COALESCE(NULLIF(slug, ''), ?),
+                draft_html = COALESCE(NULLIF(draft_html, ''), ?),
+                draft_css = COALESCE(NULLIF(draft_css, ''), ?),
+                status = CASE WHEN status IS NULL OR status = '' THEN 'draft' ELSE status END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE team_id = ?
+            """,
+            (build_team_site_slug(conn, name, exclude_team_id=team_id), html_content, css_content, team_id),
+        )
+        return existing["id"]
+    slug = build_team_site_slug(conn, name, exclude_team_id=team_id)
+    cur = conn.execute(
+        """
+        INSERT INTO team_sites (team_id, slug, status, draft_html, draft_css, published_html, published_css, created_at, updated_at)
+        VALUES (?, ?, 'draft', ?, ?, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """,
+        (team_id, slug, html_content, css_content),
+    )
+    return cur.lastrowid
+
+
+
 CYCLE_EXTRA_COLUMNS = {
     "started": "INTEGER NOT NULL DEFAULT 0",
 }
@@ -87,6 +339,8 @@ CONTRACT_EXTRA_COLUMNS = {
     "last_interventor_comment": "TEXT",
     "last_interventor_action": "TEXT",
     "last_interventor_signed_at": "TEXT",
+    "web_request_kind": "TEXT",
+    "target_team_site_id": "INTEGER",
 }
 
 
@@ -220,6 +474,28 @@ def _ensure_contract_columns(conn: sqlite3.Connection) -> None:
         conn.execute(
             "UPDATE contracts SET provider_service_track = COALESCE(NULLIF(provider_service_track, ''), (SELECT t.service_track FROM teams t WHERE t.id = COALESCE(contracts.provider_team_id, contracts.development_team_id)), 'programacion')"
         )
+    if "web_request_kind" in existing:
+        conn.execute(
+            "UPDATE contracts SET web_request_kind = COALESCE(NULLIF(web_request_kind, ''), CASE WHEN COALESCE(provider_service_track, '') = 'web_html' THEN CASE WHEN target_team_site_id IS NULL THEN 'create' ELSE 'modify' END ELSE NULL END)"
+        )
+    if "target_team_site_id" in existing and "web_request_kind" in existing:
+        rows = conn.execute(
+            """
+            SELECT c.id, COALESCE(c.client_team_id, c.robotics_team_id) AS client_team_id, c.web_request_kind
+            FROM contracts c
+            WHERE COALESCE(c.provider_service_track, '') = 'web_html' AND c.target_team_site_id IS NULL
+            """
+        ).fetchall()
+        for row in rows:
+            team_row = conn.execute(
+                "SELECT id, name, team_type, course_label, service_track FROM teams WHERE id = ?",
+                (row["client_team_id"],),
+            ).fetchone()
+            if not team_row:
+                continue
+            site_id = ensure_contract_team_site_for_team(conn, team_row)
+            if site_id:
+                conn.execute("UPDATE contracts SET target_team_site_id = ? WHERE id = ?", (site_id, row["id"]))
 
 
 def _backfill_transaction_cycles(conn: sqlite3.Connection) -> None:
@@ -324,6 +600,31 @@ def _ensure_admin_offers_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_team_sites_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS team_sites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id INTEGER NOT NULL UNIQUE,
+            slug TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'published' CHECK(status IN ('draft', 'published')),
+            draft_html TEXT,
+            draft_css TEXT,
+            published_html TEXT,
+            published_css TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+        )
+        """
+    )
+    teams = conn.execute(
+        "SELECT id, name, team_type, course_label, service_track FROM teams WHERE team_type = 'desarrollo'"
+    ).fetchall()
+    for team in teams:
+        ensure_team_site_for_team(conn, team)
+
+
 def _ensure_ai_assistant_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -359,6 +660,7 @@ def init_db() -> None:
         _ensure_cycle_teams_table(conn)
         _ensure_team_gallery_table(conn)
         _ensure_admin_offers_table(conn)
+        _ensure_team_sites_table(conn)
         _ensure_ai_assistant_table(conn)
         _backfill_transaction_cycles(conn)
         conn.commit()

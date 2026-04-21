@@ -1347,3 +1347,110 @@ body.lightbox-open {
     min-width: 0;
   }
 }
+
+
+.web-contract-preview-card {
+  overflow: hidden;
+}
+
+.web-editor-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.web-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.web-editor-grid textarea {
+  width: 100%;
+  min-height: 420px;
+  resize: vertical;
+  font-family: "Fira Code", "Cascadia Code", Consolas, monospace;
+  font-size: 0.93rem;
+  line-height: 1.55;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(2, 6, 23, 0.72);
+  color: #e2e8f0;
+  padding: 1rem;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+}
+
+.web-editor-grid textarea:focus {
+  outline: none;
+  border-color: rgba(94, 234, 212, 0.6);
+  box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.12);
+}
+
+.web-preview-shell {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.web-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.web-preview-frame {
+  width: 100%;
+  min-height: 720px;
+  border-radius: 22px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: linear-gradient(180deg, rgba(15,23,42,0.95), rgba(2,6,23,0.95));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02), 0 20px 40px rgba(2,8,23,0.28);
+}
+
+.admin-web-preview-card .web-preview-frame {
+  min-height: 640px;
+}
+
+@media (max-width: 980px) {
+  .web-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .web-editor-grid textarea {
+    min-height: 300px;
+  }
+
+  .web-preview-frame,
+  .admin-web-preview-card .web-preview-frame {
+    min-height: 520px;
+  }
+}
+
+
+.team-card-clickable {
+  box-shadow: 0 0 0 1px rgba(59,130,246,.08);
+}
+.team-name-link {
+  color: #f8fafc;
+  text-decoration: none;
+}
+.team-name-link:hover {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+.ranking-link-row {
+  text-decoration: none;
+  color: inherit;
+}
+.ranking-link-row:hover {
+  color: inherit;
+}
+.ranking-score-with-status {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+.small-link {
+  padding: 8px 10px;
+  font-size: .86rem;
+}
