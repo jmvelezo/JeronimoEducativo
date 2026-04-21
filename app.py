@@ -121,6 +121,47 @@ def team_site_by_team_id(conn, team_id: int):
     ).fetchone()
 
 
+def published_or_placeholder_team_site(conn, team_id: int):
+    team = conn.execute(
+        """
+        SELECT t.id AS team_id, t.name AS team_name, t.course_label, t.service_track,
+               t.profile_blurb, t.logo_stored_filename, t.active AS team_active,
+               (
+                   SELECT tg.stored_filename
+                   FROM team_gallery tg
+                   WHERE tg.team_id = t.id
+                   ORDER BY tg.id DESC
+                   LIMIT 1
+               ) AS preview_gallery_image
+        FROM teams t
+        WHERE t.id = ?
+        """,
+        (team_id,),
+    ).fetchone()
+    if not team or not team["team_active"]:
+        return None, None, None, False
+    site = team_site_by_team_id(conn, team_id)
+    if site and site["status"] == "published":
+        site_html, site_css = normalize_team_site_sources(site, site["published_html"], site["published_css"])
+        return site, site_html, site_css, True
+
+    placeholder = dict(team)
+    if site:
+        placeholder.update(dict(site))
+    placeholder.setdefault("status", "draft")
+    placeholder["slug"] = site["slug"] if site and site["slug"] else None
+    placeholder["team_id"] = team["team_id"]
+    placeholder["team_name"] = team["team_name"]
+    placeholder["course_label"] = team["course_label"]
+    placeholder["service_track"] = team["service_track"]
+    placeholder["profile_blurb"] = team["profile_blurb"]
+    placeholder["logo_stored_filename"] = team["logo_stored_filename"]
+    placeholder["preview_gallery_image"] = team["preview_gallery_image"]
+    site_html = default_team_site_html(team["team_name"], team["course_label"], team["service_track"])
+    site_css = default_team_site_css(team["service_track"])
+    return placeholder, site_html, site_css, False
+
+
 def build_web_request_context(conn, client_team, provider_track: str | None):
     if not client_team or (provider_track or "programacion") != "web_html":
         return None
@@ -2705,6 +2746,23 @@ def public_team_site(slug: str):
         site=site,
         site_html=site_html,
         site_css=site_css,
+        is_published_site=True,
+    )
+
+
+@app.route("/equipos/ver/<int:team_id>")
+def public_team_preview(team_id: int):
+    with get_connection() as conn:
+        site, site_html, site_css, is_published = published_or_placeholder_team_site(conn, team_id)
+    if not site:
+        abort(404)
+    return render_template(
+        "team_site_public.html",
+        title=f"{site['team_name']} · {'web pública' if is_published else 'presentación del equipo'}",
+        site=site,
+        site_html=site_html,
+        site_css=site_css,
+        is_published_site=is_published,
     )
 
 

@@ -15,9 +15,10 @@
         {% endif %}
       </div>
       <div>
-        <span class="badge">Web pública del equipo</span>
+        <span class="badge">{% if is_published_site %}Web pública del equipo{% else %}Presentación base del equipo{% endif %}</span>
         <h1>{{ site['team_name'] }}</h1>
-        <p>{{ site['profile_blurb'] or 'Esta página funciona como la presencia pública del equipo dentro de JeroCoin. Más adelante puede evolucionar como parte de un contrato web.' }}</p>
+        <p>{% if is_published_site %}{{ site['profile_blurb'] or 'Esta página funciona como la presencia pública del equipo dentro de JeroCoin. Más adelante puede evolucionar como parte de un contrato web.' }}{% else %}{{ site['profile_blurb'] or 'Este equipo todavía no tiene una web pública publicada. Por ahora se muestra una presentación base mientras su sitio se crea o mejora dentro del proyecto.' }}{% endif %}</p>
+        {% if not is_published_site %}<div class="top-gap"><span class="badge secondary">Web en construcción</span></div>{% endif %}
         <div class="button-row wrap top-gap">
           <a class="btn-link secondary" href="{{ url_for('home') }}">Volver al inicio</a>
           <a class="btn-link secondary" href="{{ url_for('project_rules') }}">Ver reglas</a>

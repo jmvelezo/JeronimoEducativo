@@ -70,11 +70,7 @@
           <p class="muted">{{ featured_team['course_label'] }} · puntaje general {{ featured_team['score'] }} pts</p>
           <p>{{ featured_team['profile_blurb'] or 'Este equipo viene sosteniendo el mejor rendimiento reciente dentro del ciclo activo.' }}</p>
           <div class="button-row wrap top-gap">
-            {% if featured_team['public_site_slug'] %}
-              <a class="btn-link secondary" href="{{ url_for('public_team_site', slug=featured_team['public_site_slug']) }}" target="_blank" rel="noopener">Abrir web pública</a>
-            {% else %}
-              <span class="badge secondary">{{ featured_team['public_site_state_label'] }}</span>
-            {% endif %}
+            <a class="btn-link secondary" href="{{ url_for('public_team_preview', team_id=featured_team['id']) }}" target="_blank" rel="noopener">{% if featured_team['public_site_slug'] %}Abrir web pública{% else %}Abrir presentación del equipo{% endif %}</a>
           </div>
         </div>
       </div>
@@ -130,7 +126,7 @@
       <div class="course-group-layout">
         <div class="landing-team-grid">
           {% for team in section.teams %}
-            {% set team_site_url = url_for('public_team_site', slug=team['public_site_slug']) if team['public_site_slug'] else None %}
+            {% set team_site_url = url_for('public_team_preview', team_id=team['id']) %}
             <article class="landing-team-card {% if team_site_url %}team-card-clickable{% endif %}">
               <div class="landing-team-top">
                 <div class="team-logo-wrap">
@@ -143,11 +139,7 @@
                   {% endif %}
                 </div>
                 <div>
-                  {% if team_site_url %}
-                    <a class="team-name-link" href="{{ team_site_url }}" target="_blank" rel="noopener"><strong>{{ team['name'] }}</strong></a>
-                  {% else %}
-                    <strong>{{ team['name'] }}</strong>
-                  {% endif %}
+                  <a class="team-name-link" href="{{ team_site_url }}" target="_blank" rel="noopener"><strong>{{ team['name'] }}</strong></a>
                   <div class="muted">{{ team['course_label'] }}</div>
                 </div>
               </div>
@@ -157,11 +149,7 @@
                   <span class="muted">Puntaje actual</span><br>
                   <strong>{{ team['score'] }} pts</strong>
                 </div>
-                {% if team_site_url %}
-                  <a class="btn-link secondary small-link" href="{{ team_site_url }}" target="_blank" rel="noopener">Ver web</a>
-                {% else %}
-                  <span class="badge secondary">{{ team['public_site_state_label'] }}</span>
-                {% endif %}
+                <a class="btn-link secondary small-link" href="{{ team_site_url }}" target="_blank" rel="noopener">{% if team['public_site_slug'] %}Ver web{% else %}Ver presentación{% endif %}</a>
               </div>
             </article>
           {% else %}
@@ -184,8 +172,7 @@
               {% if internal_total >= 3 and loop.revindex == 1 %}{% set _ = row_classes.append('rank-last') %}{% endif %}
               {% if internal_total >= 3 and loop.revindex == 2 %}{% set _ = row_classes.append('rank-penultimate') %}{% endif %}
               {% if internal_total >= 3 and loop.revindex == 3 %}{% set _ = row_classes.append('rank-antepenultimate') %}{% endif %}
-              {% set team_site_url = url_for('public_team_site', slug=team['public_site_slug']) if team['public_site_slug'] else None %}
-              {% if team_site_url %}
+              {% set team_site_url = url_for('public_team_preview', team_id=team['id']) %}
               <a class="{{ row_classes|join(' ') }} ranking-link-row" href="{{ team_site_url }}" target="_blank" rel="noopener">
                 <div class="ranking-left">
                   <span class="ranking-position">{{ loop.index }}</span>
@@ -194,20 +181,8 @@
                     <div class="muted">{{ team['score'] }} pts</div>
                   </div>
                 </div>
-                <span class="badge secondary">Ver web</span>
+                <span class="badge secondary">{% if team['public_site_slug'] %}Ver web{% else %}Ver presentación{% endif %}</span>
               </a>
-              {% else %}
-              <div class="{{ row_classes|join(' ') }}">
-                <div class="ranking-left">
-                  <span class="ranking-position">{{ loop.index }}</span>
-                  <div>
-                    <strong>{{ team['name'] }}</strong>
-                    <div class="muted">{{ team['score'] }} pts</div>
-                  </div>
-                </div>
-                <span class="badge secondary">{{ team['public_site_state_label'] }}</span>
-              </div>
-              {% endif %}
             {% else %}
               <p class="muted">Todavía no hay ranking interno disponible.</p>
             {% endfor %}
@@ -237,29 +212,8 @@
       {% if total_ranking >= 3 and loop.revindex == 1 %}{% set _ = row_classes.append('rank-last') %}{% endif %}
       {% if total_ranking >= 3 and loop.revindex == 2 %}{% set _ = row_classes.append('rank-penultimate') %}{% endif %}
       {% if total_ranking >= 3 and loop.revindex == 3 %}{% set _ = row_classes.append('rank-antepenultimate') %}{% endif %}
-      {% set team_site_url = url_for('public_team_site', slug=team['public_site_slug']) if team['public_site_slug'] else None %}
-      {% if team_site_url %}
+      {% set team_site_url = url_for('public_team_preview', team_id=team['id']) %}
       <a class="{{ row_classes|join(' ') }} ranking-link-row" href="{{ team_site_url }}" target="_blank" rel="noopener">
-        <div class="ranking-left">
-          <span class="ranking-position">{{ loop.index }}</span>
-          <div class="team-logo-wrap smallish">
-            {% if team['logo_stored_filename'] %}
-              <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
-            {% elif team['preview_gallery_image'] %}
-              <img class="team-logo-img" src="{{ url_for('public_team_gallery_file', stored_filename=team['preview_gallery_image']) }}" alt="Vista del equipo {{ team['name'] }}">
-            {% else %}
-              <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
-            {% endif %}
-          </div>
-          <div>
-            <strong>{{ team['name'] }}</strong>
-            <div class="muted">{{ team['course_label'] }}</div>
-          </div>
-        </div>
-        <div class="ranking-score">{{ team['score'] }} pts</div>
-      </a>
-      {% else %}
-      <div class="{{ row_classes|join(' ') }}">
         <div class="ranking-left">
           <span class="ranking-position">{{ loop.index }}</span>
           <div class="team-logo-wrap smallish">
@@ -278,10 +232,9 @@
         </div>
         <div class="ranking-score ranking-score-with-status">
           <span>{{ team['score'] }} pts</span>
-          <small class="muted">{{ team['public_site_state_label'] }}</small>
+          <small class="muted">{% if team['public_site_slug'] %}Web publicada{% else %}Presentación base{% endif %}</small>
         </div>
-      </div>
-      {% endif %}
+      </a>
     {% else %}
       <p class="muted">Todavía no hay ranking disponible.</p>
     {% endfor %}
