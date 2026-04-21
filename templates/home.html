@@ -18,11 +18,11 @@
 <section class="card home-intro-grid">
   <article class="info-tile">
     <h2>¿Qué se ve acá?</h2>
-    <p class="muted">Esta portada muestra los equipos por curso y el ranking general. Sirve para seguir cómo va la experiencia sin entrar todavía al panel interno.</p>
+    <p class="muted">Esta portada muestra los equipos por curso, su ranking interno, el ranking general y el equipo destacado de la quincena. Sirve para seguir cómo va la experiencia sin entrar todavía al panel interno.</p>
   </article>
   <article class="info-tile">
     <h2>¿Dónde están las reglas?</h2>
-    <p class="muted">Las reglas completas del proyecto, la explicación del puntaje y el papel del interventor ahora están en una página aparte, escrita de forma más clara y ordenada.</p>
+    <p class="muted">Las reglas completas del proyecto, la explicación del puntaje y el papel del interventor están en una página aparte, escrita de forma más clara y ordenada.</p>
   </article>
   <article class="info-tile">
     <h2>¿Qué hago después?</h2>
@@ -30,11 +30,78 @@
   </article>
 </section>
 
+{% if featured_team %}
+<section class="card featured-team-card">
+  <div class="featured-team-shell">
+    <div class="featured-effects" aria-hidden="true">
+      <span class="confetti confetti-left"></span>
+      <span class="confetti confetti-right"></span>
+      <span class="firework firework-left"></span>
+      <span class="firework firework-right"></span>
+      <span class="firework firework-center"></span>
+    </div>
+    <div class="featured-team-header">
+      <div>
+        <span class="badge gold">Equipo destacado automático</span>
+        <h2>Destacado de {{ featured_team['window_label'] }}</h2>
+        <p class="muted">Se elige automáticamente según el rendimiento del ciclo <strong>{{ featured_team['cycle_name'] }}</strong> dentro del tramo actual de 14 días.</p>
+      </div>
+      <div class="featured-window-chip">
+        <strong>{{ featured_team['window_start_display'] }}</strong>
+        <span>al</span>
+        <strong>{{ featured_team['window_end_display'] }}</strong>
+      </div>
+    </div>
+
+    <div class="featured-team-body">
+      <div class="featured-team-identity">
+        <div class="team-logo-wrap featured-logo-wrap">
+          {% if featured_team['logo_stored_filename'] %}
+            <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=featured_team['logo_stored_filename']) }}" alt="Logo de {{ featured_team['name'] }}">
+          {% elif featured_team['preview_gallery_image'] %}
+            <img class="team-logo-img" src="{{ url_for('public_team_gallery_file', stored_filename=featured_team['preview_gallery_image']) }}" alt="Vista del equipo {{ featured_team['name'] }}">
+          {% else %}
+            <div class="team-logo-placeholder">{{ featured_team['name'][:2]|upper }}</div>
+          {% endif %}
+        </div>
+        <div>
+          <h3>{{ featured_team['name'] }}</h3>
+          <p class="muted">{{ featured_team['course_label'] }} · puntaje general {{ featured_team['score'] }} pts</p>
+          <p>{{ featured_team['profile_blurb'] or 'Este equipo viene sosteniendo el mejor rendimiento reciente dentro del ciclo activo.' }}</p>
+        </div>
+      </div>
+      <div class="featured-team-metrics">
+        <div class="metric-badge highlight">
+          <span>Métrica quincenal</span>
+          <strong>{{ featured_team['featured_metric'] }}</strong>
+        </div>
+        <div class="metric-badge">
+          <span>Proyectos cerrados</span>
+          <strong>{{ featured_team['featured_success_count'] }}</strong>
+        </div>
+        <div class="metric-badge">
+          <span>Valor entregado</span>
+          <strong>{{ featured_team['featured_delivered_amount'] }} JC</strong>
+        </div>
+        <div class="metric-badge negative">
+          <span>Devoluciones</span>
+          <strong>{{ featured_team['featured_return_count'] }}</strong>
+        </div>
+        <div class="metric-badge negative">
+          <span>Cancelaciones</span>
+          <strong>{{ featured_team['featured_cancellation_count'] }}</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 <section class="card">
   <div class="section-header">
     <div>
       <h2>Equipos por curso</h2>
-      <p class="muted">Cada curso aparece con sus equipos, su identidad visual y su puntaje actual. La idea es que puedan ubicarse rápido y reconocer a los demás grupos sin llenar la pantalla de datos técnicos.</p>
+      <p class="muted">Cada curso aparece con sus equipos, su identidad visual y su puntaje actual. Ahora además cada bloque tiene su ranking interno para que se vea más claro cómo viene cada curso por dentro.</p>
     </div>
   </div>
 
@@ -44,33 +111,65 @@
         <h3>{{ section.course_label }}</h3>
         <span class="badge">{{ section.teams|length }} equipos</span>
       </div>
-      <div class="landing-team-grid">
-        {% for team in section.teams %}
-          <article class="landing-team-card">
-            <div class="landing-team-top">
-              <div class="team-logo-wrap">
-                {% if team['logo_stored_filename'] %}
-                  <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
-                {% elif team['preview_gallery_image'] %}
-                  <img class="team-logo-img" src="{{ url_for('public_team_gallery_file', stored_filename=team['preview_gallery_image']) }}" alt="Vista del equipo {{ team['name'] }}">
-                {% else %}
-                  <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
-                {% endif %}
+      <div class="course-group-layout">
+        <div class="landing-team-grid">
+          {% for team in section.teams %}
+            <article class="landing-team-card">
+              <div class="landing-team-top">
+                <div class="team-logo-wrap">
+                  {% if team['logo_stored_filename'] %}
+                    <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+                  {% elif team['preview_gallery_image'] %}
+                    <img class="team-logo-img" src="{{ url_for('public_team_gallery_file', stored_filename=team['preview_gallery_image']) }}" alt="Vista del equipo {{ team['name'] }}">
+                  {% else %}
+                    <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
+                  {% endif %}
+                </div>
+                <div>
+                  <strong>{{ team['name'] }}</strong>
+                  <div class="muted">{{ team['course_label'] }}</div>
+                </div>
               </div>
-              <div>
-                <strong>{{ team['name'] }}</strong>
-                <div class="muted">{{ team['course_label'] }}</div>
+              <p>{{ team['profile_blurb'] or 'Todavía no cargó una presentación breve.' }}</p>
+              <div class="landing-score-row">
+                <span class="muted">Puntaje actual</span>
+                <strong>{{ team['score'] }} pts</strong>
               </div>
-            </div>
-            <p>{{ team['profile_blurb'] or 'Todavía no cargó una presentación breve.' }}</p>
-            <div class="landing-score-row">
-              <span class="muted">Puntaje actual</span>
-              <strong>{{ team['score'] }} pts</strong>
-            </div>
-          </article>
-        {% else %}
-          <p class="muted">No hay equipos cargados en este curso todavía.</p>
-        {% endfor %}
+            </article>
+          {% else %}
+            <p class="muted">No hay equipos cargados en este curso todavía.</p>
+          {% endfor %}
+        </div>
+
+        <aside class="course-ranking-panel">
+          <div class="course-ranking-head">
+            <h4>Ranking interno</h4>
+            <span class="badge secondary">{{ section.course_label }}</span>
+          </div>
+          <div class="ranking-list mini-ranking-list">
+            {% set internal_total = section.ranking|length %}
+            {% for team in section.ranking %}
+              {% set row_classes = ['ranking-row', 'mini-ranking-row'] %}
+              {% if loop.index == 1 %}{% set _ = row_classes.append('rank-first') %}{% endif %}
+              {% if loop.index == 2 %}{% set _ = row_classes.append('rank-second') %}{% endif %}
+              {% if loop.index == 3 %}{% set _ = row_classes.append('rank-third') %}{% endif %}
+              {% if internal_total >= 3 and loop.revindex == 1 %}{% set _ = row_classes.append('rank-last') %}{% endif %}
+              {% if internal_total >= 3 and loop.revindex == 2 %}{% set _ = row_classes.append('rank-penultimate') %}{% endif %}
+              {% if internal_total >= 3 and loop.revindex == 3 %}{% set _ = row_classes.append('rank-antepenultimate') %}{% endif %}
+              <div class="{{ row_classes|join(' ') }}">
+                <div class="ranking-left">
+                  <span class="ranking-position">{{ loop.index }}</span>
+                  <div>
+                    <strong>{{ team['name'] }}</strong>
+                    <div class="muted">{{ team['score'] }} pts</div>
+                  </div>
+                </div>
+              </div>
+            {% else %}
+              <p class="muted">Todavía no hay ranking interno disponible.</p>
+            {% endfor %}
+          </div>
+        </aside>
       </div>
     </div>
   {% else %}

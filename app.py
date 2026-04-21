@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from functools import wraps
 from collections import Counter
 from pathlib import Path
@@ -1010,6 +1010,165 @@ def build_points_rule_text() -> str:
     )
 
 
+def parse_date_value(raw_value):
+    if not raw_value:
+        return None
+    raw = str(raw_value).strip()
+    if not raw:
+        return None
+    raw = raw[:10]
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def format_display_date(value):
+    parsed = parse_date_value(value)
+    return parsed.strftime("%d/%m/%Y") if parsed else "—"
+
+
+def compute_featured_team(conn, teams, score_map):
+    active_cycle = get_active_cycle(conn)
+    if not active_cycle:
+        return None
+
+    participant_rows = conn.execute(
+        """
+        SELECT t.id
+        FROM cycle_teams ct
+        JOIN teams t ON t.id = ct.team_id
+        WHERE ct.cycle_id = ? AND t.active = 1
+        """,
+        (active_cycle["id"],),
+    ).fetchall()
+    participant_ids = [row["id"] for row in participant_rows]
+    if not participant_ids:
+        return None
+
+    cycle_anchor = parse_date_value(active_cycle["start_date"])
+    if not cycle_anchor:
+        first_contract_row = conn.execute(
+            "SELECT MIN(date(created_at)) AS first_date FROM contracts WHERE cycle_id = ?",
+            (active_cycle["id"],),
+        ).fetchone()
+        cycle_anchor = parse_date_value(first_contract_row["first_date"] if first_contract_row else None)
+    if not cycle_anchor:
+        cycle_anchor = date.today()
+
+    today = date.today()
+    elapsed_days = max((today - cycle_anchor).days, 0)
+    window_index = elapsed_days // 14
+    window_start = cycle_anchor + timedelta(days=window_index * 14)
+    window_end = window_start + timedelta(days=13)
+
+    team_lookup = {row["id"]: dict(row) for row in teams if row["id"] in participant_ids}
+    success_count = defaultdict(int)
+    delivered_amount = defaultdict(int)
+    return_count = defaultdict(int)
+    cancellation_count = defaultdict(int)
+    activity_count = defaultdict(int)
+
+    success_rows = conn.execute(
+        """
+        SELECT COALESCE(client_team_id, robotics_team_id) AS client_team_id,
+               COALESCE(provider_team_id, development_team_id) AS provider_team_id,
+               requested_amount
+        FROM contracts
+        WHERE cycle_id = ?
+          AND status = 'closed'
+          AND payment_released = 1
+          AND date(COALESCE(closed_at, created_at)) BETWEEN date(?) AND date(?)
+        """,
+        (active_cycle["id"], window_start.isoformat(), window_end.isoformat()),
+    ).fetchall()
+    for row in success_rows:
+        for team_id in (row["client_team_id"], row["provider_team_id"]):
+            if team_id in team_lookup:
+                success_count[team_id] += 1
+                delivered_amount[team_id] += int(row["requested_amount"] or 0)
+                activity_count[team_id] += 1
+
+    return_rows = conn.execute(
+        """
+        SELECT COALESCE(c.client_team_id, c.robotics_team_id) AS client_team_id,
+               COALESCE(c.provider_team_id, c.development_team_id) AS provider_team_id
+        FROM contract_reviews cr
+        JOIN contracts c ON c.id = cr.contract_id
+        WHERE c.cycle_id = ?
+          AND cr.review_stage = 'final_delivery'
+          AND cr.decision = 'correction_required'
+          AND date(cr.signed_at) BETWEEN date(?) AND date(?)
+        """,
+        (active_cycle["id"], window_start.isoformat(), window_end.isoformat()),
+    ).fetchall()
+    for row in return_rows:
+        for team_id in (row["client_team_id"], row["provider_team_id"]):
+            if team_id in team_lookup:
+                return_count[team_id] += 1
+                activity_count[team_id] += 1
+
+    cancellation_rows = conn.execute(
+        """
+        SELECT COALESCE(client_team_id, robotics_team_id) AS client_team_id,
+               COALESCE(provider_team_id, development_team_id) AS provider_team_id
+        FROM contracts
+        WHERE cycle_id = ?
+          AND status = 'cancelled'
+          AND date(COALESCE(last_interventor_signed_at, created_at)) BETWEEN date(?) AND date(?)
+        """,
+        (active_cycle["id"], window_start.isoformat(), window_end.isoformat()),
+    ).fetchall()
+    for row in cancellation_rows:
+        for team_id in (row["client_team_id"], row["provider_team_id"]):
+            if team_id in team_lookup:
+                cancellation_count[team_id] += 1
+                activity_count[team_id] += 1
+
+    featured_candidates = []
+    for team_id in participant_ids:
+        team = team_lookup.get(team_id)
+        if not team:
+            continue
+        general_score = score_map.get(team_id, {}).get("score", 0)
+        metric_score = (
+            success_count[team_id] * 140
+            + delivered_amount[team_id] * 2
+            + activity_count[team_id] * 12
+            - return_count[team_id] * 35
+            - cancellation_count[team_id] * 55
+        )
+        team.update({
+            "featured_metric": metric_score,
+            "featured_success_count": success_count[team_id],
+            "featured_delivered_amount": delivered_amount[team_id],
+            "featured_return_count": return_count[team_id],
+            "featured_cancellation_count": cancellation_count[team_id],
+            "score": general_score,
+        })
+        featured_candidates.append(team)
+
+    if not featured_candidates:
+        return None
+
+    featured_candidates.sort(
+        key=lambda item: (
+            -item["featured_metric"],
+            -item["featured_success_count"],
+            -item["featured_delivered_amount"],
+            -item["score"],
+            item["name"].lower(),
+        )
+    )
+    featured_team = featured_candidates[0]
+    featured_team["window_label"] = f"Quincena {window_index + 1}"
+    featured_team["window_start_display"] = window_start.strftime("%d/%m/%Y")
+    featured_team["window_end_display"] = window_end.strftime("%d/%m/%Y")
+    featured_team["cycle_name"] = active_cycle["name"]
+    featured_team["cycle_anchor_display"] = format_display_date(active_cycle["start_date"])
+    return featured_team
+
+
 def compute_team_scores(conn, team_rows):
     team_ids = [row["id"] for row in team_rows]
     score_map = {}
@@ -1114,6 +1273,7 @@ def build_public_home_context():
             """
         ).fetchall()
         score_map = compute_team_scores(conn, teams)
+        featured_team = compute_featured_team(conn, teams, score_map)
 
     teams_by_course = defaultdict(list)
     ranking = []
@@ -1124,23 +1284,28 @@ def build_public_home_context():
         ranking.append(item)
 
     course_sections = []
+
     def course_sort_key(label: str):
         import re
+
         match = re.match(r"(\d+)", label or "")
         if match:
             return (0, int(match.group(1)), label)
         return (1, 999, label or "Sin curso")
 
     for course_label in sorted(teams_by_course.keys(), key=course_sort_key):
+        section_teams = sorted(teams_by_course[course_label], key=lambda x: (-x["score"], x["name"].lower()))
         course_sections.append({
             "course_label": course_label,
-            "teams": sorted(teams_by_course[course_label], key=lambda x: (-x["score"], x["name"].lower())),
+            "teams": section_teams,
+            "ranking": section_teams,
         })
 
     ranking = sorted(ranking, key=lambda x: (-x["score"], x["name"].lower()))
     return {
         "course_sections": course_sections,
         "ranking": ranking,
+        "featured_team": featured_team,
         "points_rule": build_points_rule_text(),
         "points_per_panchicoin": POINTS_PER_PANCHICOIN,
         "success_project_bonus": SUCCESS_PROJECT_BONUS,
