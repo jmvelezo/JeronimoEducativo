@@ -17,6 +17,8 @@
       <div class="team-logo-wrap large">
         {% if team['logo_stored_filename'] %}
           <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+        {% elif gallery %}
+          <img class="team-logo-img" src="{{ url_for('team_gallery_file', stored_filename=gallery[0]['stored_filename']) }}" alt="Vista de {{ team['name'] }}">
         {% else %}
           <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
         {% endif %}
@@ -38,7 +40,12 @@
       <label>Logo del equipo
         <input type="file" name="team_logo" accept=".png,.jpg,.jpeg,.webp,.gif">
       </label>
-      <p class="muted">Si no suben un logo, el sistema usa un marcador simple con el nombre del equipo.</p>
+      {% if team['team_type'] == 'desarrollo' %}
+      <label>Link de Google Sheets del equipo
+        <input type="url" name="google_sheet_url" value="{{ team['google_sheet_url'] or '' }}" placeholder="https://docs.google.com/spreadsheets/...">
+      </label>
+      {% endif %}
+      <p class="muted">Si no suben un logo, el sistema usa el logo, una imagen principal de galería o un marcador simple con el nombre del equipo.</p>
       <button type="submit">Guardar perfil</button>
     </form>
   </section>

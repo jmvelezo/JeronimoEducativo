@@ -77,6 +77,7 @@
       <div><strong>Función en la economía:</strong> {{ market_role_options.get(team['market_role'] or 'both', team['market_role'] or 'both') }}</div>
       <div><strong>Servicio principal:</strong> {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</div>
       <div><strong>Integrantes activos:</strong> {{ member_count }}</div>
+      {% if team['google_sheet_url'] %}<div><strong>Hoja del equipo:</strong> <a href="{{ team['google_sheet_url'] }}" target="_blank" rel="noopener">Abrir Google Sheets</a></div>{% endif %}
       <div><strong>Contratos históricos:</strong> {{ contract_count }}</div>
       <div><strong>Portfolios:</strong> {{ portfolio_count }}</div>
       {% if team['team_type'] == 'desarrollo' %}

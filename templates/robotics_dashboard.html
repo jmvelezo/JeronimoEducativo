@@ -18,6 +18,8 @@
       <div class="team-logo-wrap large">
         {% if team['logo_stored_filename'] %}
           <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+        {% elif team_gallery %}
+          <img class="team-logo-img" src="{{ url_for('team_gallery_file', stored_filename=team_gallery[0]['stored_filename']) }}" alt="Vista de {{ team['name'] }}">
         {% else %}
           <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
         {% endif %}
@@ -71,10 +73,23 @@
       </ul>
     </div>
   </section>
+
 </div>
 
 <section class="card">
+  <h2>Puntaje del equipo</h2>
+  <p class="muted">Tu saldo de JeroCoin sirve para contratar. El puntaje visible del ranking además reconoce proyectos, inversión y ajustes pedagógicos.</p>
+  <div class="chip-row top-gap">
+    <span class="badge">Puntaje total: {{ team_score_summary['score'] }} pts</span>
+    <span class="badge">Base por saldo: {{ team_score_summary['base_points'] }}</span>
+    {% if team_score_summary['invested_points'] %}<span class="badge">Inversión reconocida: {{ team_score_summary['invested_points'] }}</span>{% endif %}
+    {% if team_score_summary['manual_points_total'] %}<span class="badge secondary">Ajuste manual: {% if team_score_summary['manual_points_total'] > 0 %}+{% endif %}{{ team_score_summary['manual_points_total'] }}</span>{% endif %}
+  </div>
+</section>
+
+<section class="card">
   <div class="section-header">
+
     <div>
       <h2>Bolsa Digital del ciclo</h2>
       <p class="muted">Desde ahora, la exploración principal se hace desde el Bolsa Digital general. Acá tienen un resumen rápido de lo que ya está publicado.</p>

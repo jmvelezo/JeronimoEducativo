@@ -9,8 +9,9 @@
     <a class="btn-link secondary" href="{{ url_for('team_profile_manage') }}">Editar mi equipo</a>
     <a class="btn-link secondary" href="{{ url_for('marketplace') }}">Ver mercado</a>
     <a class="btn-link secondary" href="{{ url_for('team_rules_page') }}">Ver reglas</a>
-    <a class="btn-link secondary" href="{{ url_for('development_team_site_editor') }}">Editar mi web</a>
+    {% if can_edit_own_team_site %}<a class="btn-link secondary" href="{{ url_for('development_team_site_editor') }}">Editar mi web</a>{% endif %}
     {% if team_site_public_url %}<a class="btn-link secondary" href="{{ team_site_public_url }}" target="_blank" rel="noopener">Abrir mi web pública</a>{% elif team_site %}<span class="badge secondary">{{ team_site_state_label }}</span>{% endif %}
+    {% if team['google_sheet_url'] %}<a class="btn-link secondary" href="{{ team['google_sheet_url'] }}" target="_blank" rel="noopener">Abrir hoja del equipo</a>{% endif %}
     <a class="btn-link" href="{{ url_for('development_new_portfolio') }}">Crear portfolio</a>
   </div>
 </div>
@@ -21,6 +22,8 @@
       <div class="team-logo-wrap large">
         {% if team['logo_stored_filename'] %}
           <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+        {% elif team_gallery %}
+          <img class="team-logo-img" src="{{ url_for('team_gallery_file', stored_filename=team_gallery[0]['stored_filename']) }}" alt="Vista de {{ team['name'] }}">
         {% else %}
           <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
         {% endif %}
@@ -69,10 +72,29 @@
       {% endfor %}
     </div>
   </section>
+
 </div>
 
 <section class="card">
+  <h2>Puntaje del equipo</h2>
+  <p class="muted">JeroCoin y puntaje no son lo mismo. Acá se ve el resumen del ranking del equipo.</p>
+  <div class="chip-row top-gap">
+    <span class="badge">Puntaje total: {{ team_score_summary['score'] }} pts</span>
+    <span class="badge">Base por saldo: {{ team_score_summary['base_points'] }}</span>
+    {% if team_score_summary['invested_points'] %}<span class="badge">Inversión reconocida: {{ team_score_summary['invested_points'] }}</span>{% endif %}
+    {% if team_score_summary['manual_points_total'] %}<span class="badge secondary">Ajuste manual: {% if team_score_summary['manual_points_total'] > 0 %}+{% endif %}{{ team_score_summary['manual_points_total'] }}</span>{% endif %}
+  </div>
+  <div class="kv-list top-gap compact">
+    <div><strong>Bono por proyectos:</strong> {{ team_score_summary['success_bonus'] }} pts</div>
+    <div><strong>Bono por webs creadas:</strong> {{ team_score_summary['web_create_bonus'] }} pts</div>
+    <div><strong>Bono por mejoras web:</strong> {{ team_score_summary['web_modify_bonus'] }} pts</div>
+    <div><strong>Descuentos por devoluciones/cancelaciones:</strong> {{ team_score_summary['return_penalty'] + team_score_summary['cancellation_penalty'] }} pts</div>
+  </div>
+</section>
+
+<section class="card">
   <div class="section-header">
+
     <div>
       <h2>{% if team['service_track'] == 'web_html' %}Mis propuestas web{% else %}Mis portfolios{% endif %}</h2>
       <p class="muted">{% if team['service_track'] == 'web_html' %}Cada propuesta web funciona como una mini landing dentro del sistema: presentación breve, ejemplos visuales y descripción clara del servicio.{% else %}Cada portfolio se crea y se edita en su propia página. Acá solo ven el resumen y entran a trabajarlo.{% endif %}</p>

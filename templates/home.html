@@ -95,6 +95,12 @@
           <span>Mejoras web</span>
           <strong>{{ featured_team['featured_web_modify_count'] }}</strong>
         </div>
+        {% if featured_team['featured_manual_points'] %}
+        <div class="metric-badge">
+          <span>Ajuste manual</span>
+          <strong>{% if featured_team['featured_manual_points'] > 0 %}+{% endif %}{{ featured_team['featured_manual_points'] }}</strong>
+        </div>
+        {% endif %}
         <div class="metric-badge negative">
           <span>Devoluciones</span>
           <strong>{{ featured_team['featured_return_count'] }}</strong>

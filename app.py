@@ -303,6 +303,8 @@ def restore_team_site_draft(conn, site_id: int, mode: str = "published") -> bool
 def build_team_site_preview_document(site_row, html_content: str, css_content: str) -> str:
     safe_html, safe_css = normalize_team_site_sources(site_row, html_content, css_content)
     team_name = html.escape(site_row["team_name"] if site_row and site_row["team_name"] else "Equipo")
+    empty_state_html = '<section class="site-section"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'
+    preview_body = safe_html or empty_state_html
     return f"""<!doctype html>
 <html lang=\"es\">
 <head>
@@ -325,7 +327,7 @@ def build_team_site_preview_document(site_row, html_content: str, css_content: s
     <div class=\"preview-frame\">
       <div class=\"preview-banner\">Vista previa de la web del equipo · No publicada todavía</div>
       <div class=\"preview-content team-site-content\">
-        {safe_html or '<section class=\"site-section\"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'}
+        {preview_body}
       </div>
     </div>
   </div>

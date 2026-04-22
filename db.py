@@ -53,6 +53,7 @@ TEAM_EXTRA_COLUMNS = {
     "profile_blurb": "TEXT",
     "logo_original_filename": "TEXT",
     "logo_stored_filename": "TEXT",
+    "google_sheet_url": "TEXT",
 }
 
 TEAM_SITE_STATUS_VALUES = ("draft", "published")
@@ -647,6 +648,26 @@ def _ensure_ai_assistant_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_team_point_adjustments_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS team_point_adjustments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id INTEGER NOT NULL,
+            cycle_id INTEGER,
+            category TEXT NOT NULL CHECK(category IN ('participation', 'behavior', 'other')),
+            points_delta INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            created_by_user_id INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+            FOREIGN KEY (cycle_id) REFERENCES cycles(id) ON DELETE SET NULL,
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+        """
+    )
+
+
 def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(SCHEMA.read_text(encoding="utf-8"))
@@ -662,6 +683,7 @@ def init_db() -> None:
         _ensure_admin_offers_table(conn)
         _ensure_team_sites_table(conn)
         _ensure_ai_assistant_table(conn)
+        _ensure_team_point_adjustments_table(conn)
         _backfill_transaction_cycles(conn)
         conn.commit()
 
