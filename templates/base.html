@@ -4,14 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title or 'JeroCoin' }}</title>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <strong>JeroCoin</strong>
-      <span class="muted">Sistema base</span>
-    </div>
+    <a class="brand-mark" href="{{ url_for('home') }}" aria-label="Ir al inicio de JeroCoin">
+      <img src="{{ url_for('static', filename='jerocoin-logo-mark.png') }}" alt="Logo JeroCoin" class="brand-mark__icon">
+      <span class="brand-mark__copy">
+        <strong>JeroCoin</strong>
+        <span class="muted">Sistema base</span>
+      </span>
+    </a>
     <nav>
       {% if current_user %}
         <span class="muted">{{ current_user['username'] }} · {{ current_user['role'] }}</span>
@@ -39,7 +46,7 @@
   <footer class="site-footer">
     <div class="site-footer__inner">
       <button type="button" class="footer-logo-btn" id="footerLogoTrigger" aria-label="Abrir logo en tamaño grande">
-        <img src="{{ url_for('static', filename='chaos-reigns-logo.png') }}" alt="Logo Chaos Reigns" class="footer-logo">
+        <img src="{{ url_for('static', filename='jerocoin-logo-mark.png') }}" alt="Logo JeroCoin" class="footer-logo">
       </button>
 
       <div class="footer-copy">
@@ -54,7 +61,7 @@
     <div class="image-lightbox__backdrop" data-close-lightbox></div>
     <div class="image-lightbox__dialog" role="dialog" aria-modal="true" aria-label="Logo ampliado">
       <button type="button" class="image-lightbox__close" id="lightboxCloseBtn" aria-label="Cerrar imagen ampliada">×</button>
-      <img src="{{ url_for('static', filename='chaos-reigns-logo.png') }}" alt="Logo Chaos Reigns ampliado" class="image-lightbox__img">
+      <img src="{{ url_for('static', filename='jerocoin-logo-mark.png') }}" alt="Logo JeroCoin ampliado" class="image-lightbox__img">
     </div>
   </div>
 
