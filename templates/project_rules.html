@@ -65,10 +65,15 @@
 </section>
 
 <section class="card">
-  <h2>JeroCoin y puntaje no son lo mismo</h2>
-  <p>Los JeroCoin mueven la economía del proyecto: sirven para contratar, reservar y cobrar trabajos. El puntaje, en cambio, ordena el ranking y mezcla economía, proyectos aprobados y ajustes pedagógicos cargados por admin.</p>
+  <h2>Cómo funciona la moneda y el puntaje</h2>
+  <p>Los JeroCoin mueven la economía del proyecto, pero el ranking no mira solamente cuántas monedas tiene un equipo guardadas. También mira cómo trabajó.</p>
   <div class="warning-box top-gap">
     <strong>{{ points_rule }}</strong>
+  </div>
+  <div class="legend-strip top-gap">
+    <span class="badge">JeroCoin = economía del proyecto</span>
+    <span class="badge">Puntaje = posición en el ranking</span>
+    <span class="badge">Ajustes manuales = criterio pedagógico admin</span>
   </div>
   <div class="kv-list top-gap">
     <div><strong>Contrato base:</strong> {{ contract_price }} JeroCoin</div>
@@ -78,9 +83,9 @@
     <div><strong>Mejora web aprobada:</strong> +{{ web_modify_bonus }} puntos para ambos equipos</div>
     <div><strong>Devolución:</strong> -{{ return_penalty }} puntos</div>
     <div><strong>Cancelación:</strong> -{{ cancellation_penalty }} puntos</div>
+    <div><strong>Ajustes manuales admin:</strong> suman o restan según participación, comportamiento u otro criterio pedagógico</div>
   </div>
-  <p class="top-gap">Además, cuando un equipo de robótica usa monedas en un proyecto que sí termina bien, esa inversión no desaparece del puntaje. Eso existe para que contratar bien también sea valorado y no parezca un castigo. En los trabajos web, el ranking también reconoce la creación de páginas nuevas y las mejoras publicadas con aprobación.</p>
-  <div class="warning-box top-gap"><strong>Ajustes pedagógicos manuales</strong> · Admin puede sumar o restar puntos por participación, comportamiento u otros criterios. Eso queda con historial propio y no modifica el saldo de JeroCoin.</div>
+  <p class="top-gap">Además, cuando un equipo de robótica usa monedas en un proyecto que sí termina bien, esa inversión no desaparece del puntaje. Eso existe para que contratar bien también sea valorado y no parezca un castigo. En los trabajos web, el ranking también reconoce la creación de páginas nuevas y las mejoras publicadas con aprobación. Además, admin puede aplicar ajustes manuales de puntaje sin tocar los JeroCoin cuando hace falta reconocer participación o marcar una conducta.</p>
 </section>
 
 <section class="card">

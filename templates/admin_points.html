@@ -1,61 +1,54 @@
-
 {% extends 'base.html' %}
 {% block content %}
 <div class="section-header">
   <div>
     <h1>Sistema de puntos</h1>
-    <p class="muted">Acá admin puede sumar o restar puntaje pedagógico por participación, comportamiento u otros criterios. Esto no mueve JeroCoin: solo modifica el ranking.</p>
+    <p class="muted">Sumá o restá puntaje pedagógico sin tocar los JeroCoin. Acá se trabaja solo sobre ranking: la economía del sistema sigue separada.</p>
   </div>
   <div class="button-row wrap">
-    <a class="btn-link secondary" href="{{ url_for('admin_dashboard') }}">Volver a admin</a>
+    <a class="btn-link secondary" href="{{ url_for('admin_dashboard') }}">Volver al panel admin</a>
   </div>
 </div>
 
 <div class="grid two">
   <section class="card">
-    <h2>Cargar ajuste</h2>
+    <h2>Cargar ajuste manual</h2>
     <form method="post" action="{{ url_for('admin_points_adjust') }}" class="form-grid">
       <label>Equipo
-        <select name="team_id" required>
+        <select name="team_id">
           {% for section in course_sections %}
             <optgroup label="{{ section.course_label }}">
               {% for team in section.teams %}
-                <option value="{{ team['id'] }}">{{ team['name'] }} · {{ team['score'] }} pts</option>
+                <option value="{{ team['id'] }}">{{ team['name'] }} · {{ team['projected_score'] }} pts</option>
               {% endfor %}
             </optgroup>
           {% endfor %}
         </select>
       </label>
-      <label>Acción
-        <select name="action">
-          <option value="add">Sumar puntos</option>
-          <option value="subtract">Restar puntos</option>
-        </select>
-      </label>
-      <label>Cantidad
-        <input type="number" name="points_amount" min="1" value="5" required>
+      <label>Puntos (+ o -)
+        <input type="number" name="points_delta" required placeholder="Ej: 10 o -5">
       </label>
       <label>Categoría
         <select name="category">
-          {% for key, label in manual_point_categories.items() %}
-            <option value="{{ key }}">{{ label }}</option>
-          {% endfor %}
+          <option value="participation">Participación</option>
+          <option value="behavior">Comportamiento</option>
+          <option value="other">Otro</option>
         </select>
       </label>
       <label>Motivo
-        <textarea name="reason" rows="3" required placeholder="Ej: participación destacada, ayuda a otros equipos, sanción por comportamiento..."></textarea>
+        <textarea name="reason" rows="4" placeholder="Explicá por qué se suma o se descuenta este puntaje."></textarea>
       </label>
       <button type="submit">Guardar ajuste</button>
     </form>
-    <p class="muted top-gap">{% if active_cycle %}El ajuste queda asociado al ciclo activo <strong>{{ active_cycle['name'] }}</strong>.{% else %}No hay ciclo activo: el ajuste se guarda sin ciclo asociado.{% endif %}</p>
   </section>
+
   <section class="card">
-    <h2>Lectura rápida</h2>
+    <h2>Cómo impacta</h2>
     <div class="kv-list compact">
-      <div><strong>JeroCoin:</strong> economía del proyecto.</div>
-      <div><strong>Puntaje:</strong> ranking visible del equipo.</div>
-      <div><strong>Ajustes manuales:</strong> los carga admin y quedan con historial propio.</div>
-      <div><strong>Categorías:</strong> participación, comportamiento u otro criterio.</div>
+      <div><strong>JeroCoin:</strong> siguen moviendo la economía del sistema.</div>
+      <div><strong>Puntos manuales:</strong> ajustan el ranking por participación, comportamiento u otro criterio pedagógico.</div>
+      <div><strong>JeroCoin:</strong> no cambian desde esta pantalla. La billetera se sigue manejando por economía y contratos.</div>
+      <div><strong>No cambian billeteras:</strong> solo modifican el puntaje visible.</div>
     </div>
   </section>
 </div>
@@ -65,19 +58,18 @@
   <div class="section-header">
     <div>
       <h2>{{ section.course_label }}</h2>
-      <p class="muted">Ordenado como ranking interno actual.</p>
+      <p class="muted">Ordenado por puntaje proyectado para seguir el ranking interno con ajustes manuales incluidos.</p>
     </div>
   </div>
   <table>
-    <tr><th>#</th><th>Equipo</th><th>Puntaje</th><th>Ajuste manual</th><th>Bonos de proyectos</th><th>Detalle</th></tr>
+    <tr><th>Equipo</th><th>Bonus proyectos</th><th>Ajustes manuales</th><th>Bonus web</th><th>Puntaje visible</th></tr>
     {% for team in section.teams %}
       <tr>
-        <td>{{ loop.index }}</td>
-        <td>{{ team['name'] }}</td>
-        <td><strong>{{ team['score'] }}</strong></td>
-        <td>{% if team['manual_points_total'] > 0 %}+{% endif %}{{ team['manual_points_total'] }}</td>
-        <td>{{ team['success_bonus'] + team['web_create_bonus'] + team['web_modify_bonus'] }}</td>
-        <td class="muted">Base {{ team['base_points'] }} · Inversión {{ team['invested_points'] }} · Descuentos {{ team['return_penalty'] + team['cancellation_penalty'] }}</td>
+        <td><a href="{{ url_for('admin_team_detail', team_id=team['id']) }}">{{ team['name'] }}</a></td>
+        <td>{{ team['team_score_summary']['success_bonus'] }}</td>
+        <td>{{ team['team_score_summary']['manual_adjustment_points'] }}</td>
+        <td>{{ team['team_score_summary']['web_create_bonus'] + team['team_score_summary']['web_modify_bonus'] }}</td>
+        <td><strong>{{ team['projected_score'] }}</strong></td>
       </tr>
     {% endfor %}
   </table>
@@ -87,20 +79,19 @@
 <section class="card">
   <h2>Historial reciente</h2>
   <table>
-    <tr><th>Fecha</th><th>Equipo</th><th>Curso</th><th>Categoría</th><th>Ajuste</th><th>Motivo</th><th>Actor</th><th>Ciclo</th></tr>
-    {% for item in recent_adjustments %}
+    <tr><th>Fecha</th><th>Equipo</th><th>Curso</th><th>Categoría</th><th>Ajuste</th><th>Motivo</th><th>Actor</th></tr>
+    {% for row in history %}
       <tr>
-        <td>{{ item['created_at'] }}</td>
-        <td>{{ item['team_name'] }}</td>
-        <td>{{ item['course_label'] or 'Sin curso' }}</td>
-        <td>{{ manual_point_categories.get(item['category'], item['category']) }}</td>
-        <td>{% if item['points_delta'] > 0 %}+{% endif %}{{ item['points_delta'] }}</td>
-        <td>{{ item['reason'] }}</td>
-        <td>{{ item['actor_username'] or 'admin' }}</td>
-        <td>{{ item['cycle_name'] or '—' }}</td>
+        <td>{{ row['created_at'] }}</td>
+        <td>{{ row['team_name'] }}</td>
+        <td>{{ row['course_label'] }}</td>
+        <td>{{ row['category'] }}</td>
+        <td>{{ row['points_delta'] }}</td>
+        <td>{{ row['reason'] or '—' }}</td>
+        <td>{{ row['actor_username'] or 'admin' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="8">Todavía no hay ajustes cargados.</td></tr>
+      <tr><td colspan="7">Todavía no hay ajustes manuales cargados.</td></tr>
     {% endfor %}
   </table>
 </section>

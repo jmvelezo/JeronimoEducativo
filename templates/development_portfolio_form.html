@@ -17,8 +17,8 @@
       <div class="team-logo-wrap large">
         {% if team['logo_stored_filename'] %}
           <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
-        {% elif team['preview_gallery_image'] %}
-          <img class="team-logo-img" src="{{ url_for('team_gallery_file', stored_filename=team['preview_gallery_image']) }}" alt="Imagen destacada de {{ team['name'] }}">
+        {% elif gallery %}
+          <img class="team-logo-img" src="{{ url_for('team_gallery_file', stored_filename=gallery[0]['stored_filename']) }}" alt="Vista de {{ team['name'] }}">
         {% else %}
           <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
         {% endif %}

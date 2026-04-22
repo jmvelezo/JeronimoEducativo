@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <h1>Panel administrador</h1>
-<p class="muted">Este panel queda como centro de monitoreo. La gestión fina vive en <a href="{{ url_for('admin_teams') }}">Gestión de equipos</a> y la liquidación económica por ciclo ahora tiene su propia pantalla en <a href="{{ url_for('admin_cycle_center') }}">Centro de ciclos</a>.</p>
+<p class="muted">Este panel queda como centro de monitoreo. La gestión fina vive en <a href="{{ url_for('admin_teams') }}">Gestión de equipos</a>, la liquidación económica por ciclo tiene su propia pantalla en <a href="{{ url_for('admin_cycle_center') }}">Centro de ciclos</a> y el sistema de puntos trabaja aparte para no mezclar economía con criterios pedagógicos.</p>
 
 <section class="stats-grid">
   <div class="card stat-card">

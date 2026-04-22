@@ -77,9 +77,11 @@
       <div><strong>Función en la economía:</strong> {{ market_role_options.get(team['market_role'] or 'both', team['market_role'] or 'both') }}</div>
       <div><strong>Servicio principal:</strong> {{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</div>
       <div><strong>Integrantes activos:</strong> {{ member_count }}</div>
-      {% if team['google_sheet_url'] %}<div><strong>Hoja del equipo:</strong> <a href="{{ team['google_sheet_url'] }}" target="_blank" rel="noopener">Abrir Google Sheets</a></div>{% endif %}
       <div><strong>Contratos históricos:</strong> {{ contract_count }}</div>
       <div><strong>Portfolios:</strong> {{ portfolio_count }}</div>
+      {% if team['google_sheet_url'] %}<div><strong>Google Sheets:</strong> <a href="{{ team['google_sheet_url'] }}" target="_blank" rel="noopener">Abrir planilla</a></div>{% endif %}
+      <div><strong>Puntaje actual:</strong> {{ team_score_summary['score'] }} pts</div>
+      {% if team_score_summary['manual_adjustment_points'] %}<div><strong>Ajustes manuales:</strong> {{ team_score_summary['manual_adjustment_points'] }}</div>{% endif %}
       {% if team['team_type'] == 'desarrollo' %}
         <div><strong>COO activo:</strong> {{ active_coo or 'todavía no asignado' }}</div>
       {% endif %}
@@ -125,6 +127,19 @@
     {% endif %}
   </section>
 </div>
+
+<section class="card">
+  <h2>Lectura rápida del puntaje</h2>
+  <p class="muted">Este bloque ayuda a distinguir qué parte del ranking viene del saldo, qué parte viene del trabajo realizado y qué parte viene de ajustes pedagógicos.</p>
+  <div class="score-breakdown-grid top-gap">
+    <div class="score-breakdown-card"><span>Base por saldo</span><strong>{{ team_score_summary['base_points'] }} pts</strong><small>{{ team['wallet_balance'] }} JeroCoin</small></div>
+    {% if team_score_summary['invested_points'] %}<div class="score-breakdown-card"><span>Inversión reconocida</span><strong>{{ team_score_summary['invested_points'] }} pts</strong><small>Solo aplica a robótica</small></div>{% endif %}
+    <div class="score-breakdown-card"><span>Bonus proyectos</span><strong>{{ team_score_summary['success_bonus'] }} pts</strong><small>{{ team_score_summary['success_count'] }} cierres exitosos</small></div>
+    <div class="score-breakdown-card"><span>Bonus web</span><strong>{{ team_score_summary['web_create_bonus'] + team_score_summary['web_modify_bonus'] }} pts</strong><small>{{ team_score_summary['web_create_count'] }} creaciones · {{ team_score_summary['web_modify_count'] }} mejoras</small></div>
+    <div class="score-breakdown-card"><span>Ajustes admin</span><strong>{{ team_score_summary['manual_adjustment_points'] }}</strong><small>Participación, comportamiento u otro criterio</small></div>
+    <div class="score-breakdown-card negative"><span>Descuentos</span><strong>-{{ team_score_summary['return_penalty'] + team_score_summary['cancellation_penalty'] }} pts</strong><small>{{ team_score_summary['return_count'] }} devoluciones · {{ team_score_summary['cancellation_count'] }} cancelaciones</small></div>
+  </div>
+</section>
 
 {% if current_user['role'] == 'admin' %}
 <div class="grid two">

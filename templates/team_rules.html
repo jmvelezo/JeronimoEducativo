@@ -35,7 +35,7 @@
   <h2>Reglas generales</h2>
   <ol class="simple-list">
     <li>La idea del sistema no es solo juntar monedas: también importa trabajar ordenados, cumplir fechas y explicar bien lo que hace cada equipo.</li>
-    <li>Los JeroCoin siguen siendo la moneda del sistema, pero el puntaje ahora mira más cosas: saldo disponible, proyectos completados, inversión que ya hizo robótica, bonos web y ajustes manuales del admin.</li>
+    <li>Los JeroCoin siguen siendo la moneda del sistema, pero el puntaje ahora mira más cosas: saldo disponible, proyectos completados, inversión que ya hizo robótica y descuentos por devoluciones o cancelaciones.</li>
     <li>Siempre que aparezca una firma del interventor, conviene leerla completa. Esa firma explica si algo fue aprobado, corregido, pausado o cerrado.</li>
     <li>Si el equipo tiene dudas, tiene que dejarlas por escrito en comentarios, mensajes del contrato o en el material que suba.</li>
     <li>Respetar tiempos y acuerdos es parte de la actividad. No alcanza con que algo “más o menos funcione”. También tiene que poder explicarse.</li>
@@ -74,8 +74,12 @@
   <div class="warning-box top-gap">
     <strong>{{ points_rule }}</strong>
   </div>
-  <p class="top-gap">La base sigue siendo la misma: cada JeroCoin disponible vale {{ points_per_panchicoin }} puntos. Pero además, los proyectos cerrados con éxito suman <strong>{{ success_project_bonus }} puntos</strong> para ambos equipos. Si el trabajo es web, una creación aprobada suma <strong>{{ web_create_bonus }} puntos</strong> extra y una mejora publicada suma <strong>{{ web_modify_bonus }} puntos</strong> extra para ambos equipos. Si un trabajo vuelve con correcciones, descuenta <strong>{{ return_penalty }} puntos</strong>. Si termina cancelado, descuenta <strong>{{ cancellation_penalty }} puntos</strong>.</p>
+  <div class="legend-strip top-gap">
+    <span class="badge">JeroCoin = economía del equipo</span>
+    <span class="badge">Puntaje = ranking visible</span>
+    <span class="badge">Ajustes admin = participación o comportamiento</span>
+  </div>
+  <p class="top-gap">La base sigue siendo la misma: cada JeroCoin disponible vale {{ points_per_panchicoin }} puntos. Pero además, los proyectos cerrados con éxito suman <strong>{{ success_project_bonus }} puntos</strong> para ambos equipos. Si el trabajo es web, una creación aprobada suma <strong>{{ web_create_bonus }} puntos</strong> extra y una mejora publicada suma <strong>{{ web_modify_bonus }} puntos</strong> extra para ambos equipos. Si admin carga ajustes manuales por participación, comportamiento u otro criterio, también impactan en el ranking sin mover los JeroCoin. Si un trabajo vuelve con correcciones, descuenta <strong>{{ return_penalty }} puntos</strong>. Si termina cancelado, descuenta <strong>{{ cancellation_penalty }} puntos</strong>.</p>
   <p>En robótica hay una regla extra para que usar las monedas no baje injustamente el ranking: los JeroCoin invertidos en proyectos que realmente se cerraron con éxito siguen contando en el puntaje, aunque ya no estén disponibles en la billetera.</p>
-  <div class="warning-box top-gap"><strong>Ajustes manuales del admin</strong> · Se usan para participación, comportamiento u otros criterios pedagógicos. Quedan registrados con motivo e historial propio, y no cambian la billetera del equipo.</div>
 </section>
 {% endblock %}

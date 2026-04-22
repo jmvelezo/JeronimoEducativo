@@ -1497,3 +1497,37 @@ body.lightbox-open {
     height: 38px;
   }
 }
+
+
+.score-breakdown-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.score-breakdown-card {
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+}
+.score-breakdown-card span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.score-breakdown-card strong {
+  font-size: 1.25rem;
+}
+.score-breakdown-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+.score-breakdown-card.negative strong {
+  color: #fca5a5;
+}
+.legend-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

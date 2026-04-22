@@ -23,11 +23,11 @@
   </article>
   <article class="info-tile">
     <h2>¿Dónde están las reglas?</h2>
-    <p class="muted">Las reglas completas del proyecto, la explicación del puntaje y el papel del interventor están en una página aparte, escrita de forma más clara y ordenada.</p>
+    <p class="muted">Las reglas completas del proyecto explican por separado tres cosas: economía en JeroCoin, puntaje del ranking y ajustes manuales de admin. También explican el papel del interventor.</p>
   </article>
   <article class="info-tile">
     <h2>¿Qué hago después?</h2>
-    <p class="muted">Cuando llegue el momento, cada cuenta entra a su espacio para contratar, entregar, revisar, corregir o seguir el estado de sus trabajos.</p>
+    <p class="muted">Cuando llegue el momento, cada cuenta entra a su espacio para contratar, entregar, revisar, corregir o seguir el estado de sus trabajos. El ranking que ves acá ya puede incluir ajustes manuales pedagógicos.</p>
   </article>
 </section>
 
@@ -77,7 +77,7 @@
       <div class="featured-team-metrics">
         <div class="metric-badge highlight">
           <span>Métrica quincenal</span>
-          <strong>{{ featured_team['featured_metric'] }}</strong>
+          <strong>{{ featured_team['featured_metric'] }}</strong>{% if featured_team['manual_adjustment_points'] %}<small class="muted"> · ajustes {{ featured_team['manual_adjustment_points'] }}</small>{% endif %}
         </div>
         <div class="metric-badge">
           <span>Proyectos cerrados</span>
@@ -95,12 +95,6 @@
           <span>Mejoras web</span>
           <strong>{{ featured_team['featured_web_modify_count'] }}</strong>
         </div>
-        {% if featured_team['featured_manual_points'] %}
-        <div class="metric-badge">
-          <span>Ajuste manual</span>
-          <strong>{% if featured_team['featured_manual_points'] > 0 %}+{% endif %}{{ featured_team['featured_manual_points'] }}</strong>
-        </div>
-        {% endif %}
         <div class="metric-badge negative">
           <span>Devoluciones</span>
           <strong>{{ featured_team['featured_return_count'] }}</strong>
@@ -119,7 +113,7 @@
   <div class="section-header">
     <div>
       <h2>Equipos por curso</h2>
-      <p class="muted">Cada curso aparece con sus equipos, su identidad visual y su puntaje actual. Ahora además cada bloque tiene su ranking interno para que se vea más claro cómo viene cada curso por dentro.</p>
+      <p class="muted">Cada curso aparece con sus equipos, su identidad visual y su puntaje actual. El ranking visible ahora combina economía, proyectos cerrados, bonus web y ajustes manuales cargados desde admin.</p>
     </div>
   </div>
 
@@ -205,7 +199,7 @@
   <div class="section-header">
     <div>
       <h2>Ranking general</h2>
-      <p class="muted">Los primeros puestos brillan por su rendimiento y los últimos muestran que todavía tienen terreno para remontar. Pasá el cursor por cada uno para ver el efecto visual.</p>
+      <p class="muted">Los primeros puestos brillan por su rendimiento y los últimos muestran que todavía tienen terreno para remontar. Este ranking ya incluye también los ajustes manuales de puntaje aplicados por admin.</p>
     </div>
   </div>
   <div class="ranking-list">

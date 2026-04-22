@@ -303,8 +303,8 @@ def restore_team_site_draft(conn, site_id: int, mode: str = "published") -> bool
 def build_team_site_preview_document(site_row, html_content: str, css_content: str) -> str:
     safe_html, safe_css = normalize_team_site_sources(site_row, html_content, css_content)
     team_name = html.escape(site_row["team_name"] if site_row and site_row["team_name"] else "Equipo")
-    empty_state_html = '<section class="site-section"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'
-    preview_body = safe_html or empty_state_html
+    fallback_html = '<section class="site-section"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'
+    preview_body = safe_html or fallback_html
     return f"""<!doctype html>
 <html lang=\"es\">
 <head>
@@ -1284,6 +1284,8 @@ POINTS_PER_PANCHICOIN = 10
 SUCCESS_PROJECT_BONUS = 50
 RETURN_PENALTY = 15
 CANCELLATION_PENALTY = 30
+WEB_CREATE_BONUS = 40
+WEB_MODIFY_BONUS = 20
 
 
 def panchicoin_points(balance: int | None) -> int:
@@ -1296,9 +1298,42 @@ def build_points_rule_text() -> str:
         f"Puntaje = saldo disponible × {POINTS_PER_PANCHICOIN}"
         f" + inversión robótica en proyectos cerrados × {POINTS_PER_PANCHICOIN}"
         f" + {SUCCESS_PROJECT_BONUS} por proyecto exitoso"
+        f" + {WEB_CREATE_BONUS} por creación web aprobada"
+        f" + {WEB_MODIFY_BONUS} por mejora web aprobada"
+        f" + ajustes manuales del panel admin"
         f" - {RETURN_PENALTY} por devolución"
         f" - {CANCELLATION_PENALTY} por cancelación"
     )
+
+
+def team_can_edit_own_site(team) -> bool:
+    if not team:
+        return False
+    return team["team_type"] == "desarrollo" and (team["service_track"] or "programacion") == "web_html"
+
+
+def empty_score_summary() -> dict:
+    return {
+        "score": 0,
+        "base_points": 0,
+        "invested_points": 0,
+        "success_count": 0,
+        "success_bonus": 0,
+        "return_count": 0,
+        "return_penalty": 0,
+        "cancellation_count": 0,
+        "cancellation_penalty": 0,
+        "web_create_count": 0,
+        "web_create_bonus": 0,
+        "web_modify_count": 0,
+        "web_modify_bonus": 0,
+        "manual_adjustment_points": 0,
+    }
+
+
+def manual_adjustments_by_team(conn):
+    rows = conn.execute("SELECT team_id, COALESCE(SUM(points_delta), 0) AS total FROM team_point_adjustments GROUP BY team_id").fetchall()
+    return {row["team_id"]: int(row["total"] or 0) for row in rows}
 
 
 def parse_date_value(raw_value):
@@ -1317,6 +1352,7 @@ def parse_date_value(raw_value):
 def format_display_date(value):
     parsed = parse_date_value(value)
     return parsed.strftime("%d/%m/%Y") if parsed else "—"
+
 
 
 def compute_featured_team(conn, teams, score_map):
@@ -1364,7 +1400,9 @@ def compute_featured_team(conn, teams, score_map):
         """
         SELECT COALESCE(client_team_id, robotics_team_id) AS client_team_id,
                COALESCE(provider_team_id, development_team_id) AS provider_team_id,
-               requested_amount
+               requested_amount,
+               provider_service_track,
+               web_request_kind
         FROM contracts
         WHERE cycle_id = ?
           AND status = 'closed'
@@ -1379,6 +1417,8 @@ def compute_featured_team(conn, teams, score_map):
                 success_count[team_id] += 1
                 delivered_amount[team_id] += int(row["requested_amount"] or 0)
                 activity_count[team_id] += 1
+                if row["provider_service_track"] == "web_html" and row["web_request_kind"] in {"create", "modify"}:
+                    activity_count[team_id] += 1
 
     return_rows = conn.execute(
         """
@@ -1421,11 +1461,14 @@ def compute_featured_team(conn, teams, score_map):
         team = team_lookup.get(team_id)
         if not team:
             continue
-        general_score = score_map.get(team_id, {}).get("score", 0)
+        score_row = score_map.get(team_id, empty_score_summary())
+        general_score = score_row.get("score", 0)
+        manual_points = score_row.get("manual_adjustment_points", 0)
         metric_score = (
             success_count[team_id] * 140
             + delivered_amount[team_id] * 2
             + activity_count[team_id] * 12
+            + manual_points
             - return_count[team_id] * 35
             - cancellation_count[team_id] * 55
         )
@@ -1436,21 +1479,14 @@ def compute_featured_team(conn, teams, score_map):
             "featured_return_count": return_count[team_id],
             "featured_cancellation_count": cancellation_count[team_id],
             "score": general_score,
+            "manual_adjustment_points": manual_points,
         })
         featured_candidates.append(team)
 
     if not featured_candidates:
         return None
 
-    featured_candidates.sort(
-        key=lambda item: (
-            -item["featured_metric"],
-            -item["featured_success_count"],
-            -item["featured_delivered_amount"],
-            -item["score"],
-            item["name"].lower(),
-        )
-    )
+    featured_candidates.sort(key=lambda item: (-item["featured_metric"], -item["featured_success_count"], -item["featured_delivered_amount"], -item["score"], item["name"].lower()))
     featured_team = featured_candidates[0]
     featured_team["window_label"] = f"Quincena {window_index + 1}"
     featured_team["window_start_display"] = window_start.strftime("%d/%m/%Y")
@@ -1471,17 +1507,28 @@ def compute_team_scores(conn, team_rows):
         SELECT id,
                COALESCE(client_team_id, robotics_team_id) AS client_team_id,
                COALESCE(provider_team_id, development_team_id) AS provider_team_id,
-               requested_amount
+               requested_amount,
+               provider_service_track,
+               web_request_kind
         FROM contracts
         WHERE status = 'closed' AND payment_released = 1
         """
     ).fetchall()
     successful_count = defaultdict(int)
     client_invested = defaultdict(int)
+    web_create_count = defaultdict(int)
+    web_modify_count = defaultdict(int)
     for contract in successful_contracts:
-        successful_count[contract["client_team_id"]] += 1
-        successful_count[contract["provider_team_id"]] += 1
+        for team_id in (contract["client_team_id"], contract["provider_team_id"]):
+            successful_count[team_id] += 1
         client_invested[contract["client_team_id"]] += int(contract["requested_amount"] or 0)
+        if contract["provider_service_track"] == "web_html":
+            if contract["web_request_kind"] == "create":
+                for team_id in (contract["client_team_id"], contract["provider_team_id"]):
+                    web_create_count[team_id] += 1
+            elif contract["web_request_kind"] == "modify":
+                for team_id in (contract["client_team_id"], contract["provider_team_id"]):
+                    web_modify_count[team_id] += 1
 
     return_reviews = conn.execute(
         """
@@ -1512,16 +1559,18 @@ def compute_team_scores(conn, team_rows):
         cancellation_count[contract["client_team_id"]] += 1
         cancellation_count[contract["provider_team_id"]] += 1
 
+    manual_points = manual_adjustments_by_team(conn)
     for row in team_rows:
         team_id = row["id"]
         base_points = panchicoin_points(row["wallet_balance"])
-        invested_points = 0
-        if row["team_type"] == "robotica":
-            invested_points = panchicoin_points(client_invested[team_id])
+        invested_points = panchicoin_points(client_invested[team_id]) if row["team_type"] == "robotica" else 0
         success_bonus = successful_count[team_id] * SUCCESS_PROJECT_BONUS
+        create_bonus = web_create_count[team_id] * WEB_CREATE_BONUS
+        modify_bonus = web_modify_count[team_id] * WEB_MODIFY_BONUS
         returns_penalty = return_count[team_id] * RETURN_PENALTY
         cancellations_penalty = cancellation_count[team_id] * CANCELLATION_PENALTY
-        total = max(0, base_points + invested_points + success_bonus - returns_penalty - cancellations_penalty)
+        manual_adjustment_points = int(manual_points.get(team_id, 0))
+        total = max(0, base_points + invested_points + success_bonus + create_bonus + modify_bonus + manual_adjustment_points - returns_penalty - cancellations_penalty)
         score_map[team_id] = {
             "score": total,
             "base_points": base_points,
@@ -1532,11 +1581,17 @@ def compute_team_scores(conn, team_rows):
             "return_penalty": returns_penalty,
             "cancellation_count": cancellation_count[team_id],
             "cancellation_penalty": cancellations_penalty,
+            "web_create_count": web_create_count[team_id],
+            "web_create_bonus": create_bonus,
+            "web_modify_count": web_modify_count[team_id],
+            "web_modify_bonus": modify_bonus,
+            "manual_adjustment_points": manual_adjustment_points,
         }
     return score_map
 
 
 def build_public_home_context():
+
     with get_connection() as conn:
         teams = conn.execute(
             """
@@ -1602,6 +1657,8 @@ def build_public_home_context():
         "points_rule": build_points_rule_text(),
         "points_per_panchicoin": POINTS_PER_PANCHICOIN,
         "success_project_bonus": SUCCESS_PROJECT_BONUS,
+        "web_create_bonus": WEB_CREATE_BONUS,
+        "web_modify_bonus": WEB_MODIFY_BONUS,
         "return_penalty": RETURN_PENALTY,
         "cancellation_penalty": CANCELLATION_PENALTY,
     }
@@ -1630,6 +1687,8 @@ def project_rules():
         points_rule=build_points_rule_text(),
         points_per_panchicoin=POINTS_PER_PANCHICOIN,
         success_project_bonus=SUCCESS_PROJECT_BONUS,
+        web_create_bonus=WEB_CREATE_BONUS,
+        web_modify_bonus=WEB_MODIFY_BONUS,
         return_penalty=RETURN_PENALTY,
         cancellation_penalty=CANCELLATION_PENALTY,
     )
@@ -1823,6 +1882,85 @@ def admin_dashboard():
         recent_admin_offers=recent_admin_offers,
         portfolio_service_category_options=PORTFOLIO_SERVICE_CATEGORY_OPTIONS,
     )
+
+
+@app.route("/admin/points")
+@role_required("admin")
+def admin_points():
+    with get_connection() as conn:
+        teams = conn.execute(
+            """
+            SELECT t.id, t.name, t.team_type, t.service_track,
+                   COALESCE(NULLIF(t.course_label, ''), 'Sin curso') AS course_label,
+                   COALESCE(w.balance, 0) AS wallet_balance,
+                   t.active
+            FROM teams t
+            LEFT JOIN wallets w ON w.owner_type = 'team' AND w.owner_id = t.id
+            WHERE t.active = 1
+            ORDER BY course_label, t.name
+            """
+        ).fetchall()
+        score_map = compute_team_scores(conn, teams)
+        history = conn.execute(
+            """
+            SELECT a.*, t.name AS team_name,
+                   COALESCE(NULLIF(t.course_label, ''), 'Sin curso') AS course_label,
+                   u.username AS actor_username,
+                   c.name AS cycle_name
+            FROM team_point_adjustments a
+            JOIN teams t ON t.id = a.team_id
+            LEFT JOIN users u ON u.id = a.created_by_user_id
+            LEFT JOIN cycles c ON c.id = a.cycle_id
+            ORDER BY a.id DESC
+            LIMIT 120
+            """
+        ).fetchall()
+    grouped = defaultdict(list)
+    for row in teams:
+        item = dict(row)
+        summary = score_map.get(item["id"], empty_score_summary())
+        item["team_score_summary"] = summary
+        item["projected_score"] = summary["score"]
+        grouped[item["course_label"]].append(item)
+
+    def _course_sort(label: str):
+        m = re.match(r"(\d+)", label or "")
+        return (0, int(m.group(1)), label) if m else (1, 999, label or "Sin curso")
+
+    course_sections = []
+    for course_label in sorted(grouped.keys(), key=_course_sort):
+        ranked = sorted(grouped[course_label], key=lambda x: (-x["projected_score"], x["name"].lower()))
+        course_sections.append({"course_label": course_label, "teams": ranked})
+    return render_template("admin_points.html", course_sections=course_sections, history=history)
+
+
+@app.route("/admin/points/adjust", methods=["POST"])
+@role_required("admin")
+def admin_points_adjust():
+    user = current_user()
+    team_id = int(request.form.get("team_id") or 0)
+    points_delta = int(request.form.get("points_delta") or 0)
+    category = (request.form.get("category") or "other").strip().lower()
+    reason = (request.form.get("reason") or "Ajuste pedagógico").strip()
+    if category not in {"participation", "behavior", "other"}:
+        category = "other"
+    if points_delta == 0:
+        flash("El ajuste no puede ser 0.", "warning")
+        return redirect(url_for("admin_points"))
+    with get_connection() as conn:
+        team = conn.execute("SELECT * FROM teams WHERE id = ? AND active = 1", (team_id,)).fetchone()
+        if not team:
+            flash("Equipo no encontrado.", "danger")
+            return redirect(url_for("admin_points"))
+        active_cycle = get_active_cycle(conn)
+        adjustment_id = conn.execute(
+            "INSERT INTO team_point_adjustments (team_id, cycle_id, category, points_delta, reason, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (team_id, active_cycle["id"] if active_cycle else None, category, points_delta, reason, user["id"]),
+        ).lastrowid
+        log_action(conn, user["id"], "adjust_team_points", "team_point_adjustment", adjustment_id, f"team={team['name']} delta={points_delta} category={category} reason={reason}")
+        conn.commit()
+    flash("Ajuste de puntos guardado.", "success")
+    return redirect(url_for("admin_points"))
 
 
 @app.route("/admin/interventors/create", methods=["POST"])
@@ -2840,6 +2978,8 @@ def team_rules_page():
         points_rule=build_points_rule_text(),
         points_per_panchicoin=POINTS_PER_PANCHICOIN,
         success_project_bonus=SUCCESS_PROJECT_BONUS,
+        web_create_bonus=WEB_CREATE_BONUS,
+        web_modify_bonus=WEB_MODIFY_BONUS,
         return_penalty=RETURN_PENALTY,
         cancellation_penalty=CANCELLATION_PENALTY,
     )
@@ -2862,7 +3002,9 @@ def team_profile_manage():
     )
     with get_connection() as conn:
         gallery = fetch_team_gallery(conn, team["id"])
-    return render_template("team_profile_manage.html", team=team, members=members, gallery=gallery, service_track_options=SERVICE_TRACK_OPTIONS)
+        team_score_summary = compute_team_scores(conn, [team]).get(team["id"], empty_score_summary())
+    return render_template("team_profile_manage.html", team=team, members=members, gallery=gallery, service_track_options=SERVICE_TRACK_OPTIONS, team_score_summary=team_score_summary)
+
 
 
 @app.route("/mi-equipo/actualizar", methods=["POST"])
@@ -2870,26 +3012,31 @@ def team_profile_manage():
 def update_team_profile():
     user = current_user()
     profile_blurb = (request.form.get("profile_blurb") or "").strip()
+    google_sheet_url = (request.form.get("google_sheet_url") or "").strip()
     logo_file = request.files.get("team_logo")
     try:
         logo_original, logo_stored = save_team_logo_file(logo_file, user["team_id"])
     except ValueError as exc:
         flash(str(exc), "danger")
         return redirect(url_for("team_profile_manage"))
+    if google_sheet_url and not (google_sheet_url.startswith("http://") or google_sheet_url.startswith("https://")):
+        flash("El link de Google Sheets tiene que empezar con http:// o https://.", "danger")
+        return redirect(url_for("team_profile_manage"))
     with get_connection() as conn:
         team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
         if not team:
             flash("Equipo no encontrado.", "danger")
             return redirect(url_for("dashboard"))
+        sheet_value = google_sheet_url if team["team_type"] == "desarrollo" else team["google_sheet_url"]
         if logo_stored:
             conn.execute(
-                "UPDATE teams SET profile_blurb = ?, logo_original_filename = ?, logo_stored_filename = ? WHERE id = ?",
-                (profile_blurb, logo_original or team["logo_original_filename"], logo_stored, team["id"]),
+                "UPDATE teams SET profile_blurb = ?, google_sheet_url = ?, logo_original_filename = ?, logo_stored_filename = ? WHERE id = ?",
+                (profile_blurb, sheet_value, logo_original or team["logo_original_filename"], logo_stored, team["id"]),
             )
         else:
             conn.execute(
-                "UPDATE teams SET profile_blurb = ? WHERE id = ?",
-                (profile_blurb, team["id"]),
+                "UPDATE teams SET profile_blurb = ?, google_sheet_url = ? WHERE id = ?",
+                (profile_blurb, sheet_value, team["id"]),
             )
         log_action(conn, user["id"], "update_team_profile", "team", team["id"], "visual_profile")
         conn.commit()
@@ -3124,6 +3271,7 @@ def admin_team_detail(team_id: int):
         open_cycle_info=open_cycle_info,
         global_open_cycle=global_open_cycle,
         reviews_by_contract=reviews_by_contract,
+        team_score_summary=team_score_summary,
     )
 
 
@@ -3807,6 +3955,11 @@ def take_admin_offer(offer_id: int):
     return redirect(url_for("development_dashboard"))
 
 
+def _robotics_score_summary(team):
+    with get_connection() as conn:
+        return compute_team_scores(conn, [team]).get(team["id"], empty_score_summary())
+
+
 @app.route("/robotica")
 @role_required("robotica_team")
 def robotics_dashboard():
@@ -4019,6 +4172,7 @@ def robotics_portfolio_detail(portfolio_id: int):
         contract_request_web_context=contract_request_web_context,
         portfolio_service_category_options=PORTFOLIO_SERVICE_CATEGORY_OPTIONS,
         service_track_options=SERVICE_TRACK_OPTIONS,
+        team_score_summary=_robotics_score_summary(team),
     )
 
 
@@ -4311,6 +4465,7 @@ def development_dashboard():
     with get_connection() as conn:
         team_gallery = fetch_team_gallery(conn, team["id"], limit=8)
         team_site = team_site_by_team_id(conn, team["id"])
+        team_score_summary = compute_team_scores(conn, [team]).get(team["id"], empty_score_summary())
     portfolios = query_all("SELECT * FROM portfolios WHERE team_id = ? ORDER BY id DESC", (team["id"],))
     contracts = query_all(
         """
@@ -4396,6 +4551,8 @@ def development_dashboard():
         team_site=team_site,
         team_site_public_url=(url_for("public_team_site", slug=team_site["slug"]) if team_site and team_site["status"] == "published" else None),
         team_site_state_label=("Web pública lista" if team_site and team_site["status"] == "published" else ("Web base creada" if team_site else "Todavía no tiene web")),
+        can_edit_own_team_site=team_can_edit_own_site(team),
+        team_score_summary=team_score_summary,
     )
 
 
@@ -4407,6 +4564,9 @@ def development_team_site_editor():
         team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
         if not team:
             abort(404)
+        if not team_can_edit_own_site(team):
+            flash("Solo los equipos Web / HTML pueden editar su propia web.", "warning")
+            return redirect_back("development_dashboard")
         ensure_team_site_for_team(conn, team)
         team_site = team_site_by_team_id(conn, team["id"])
         if not team_site:
@@ -4442,6 +4602,9 @@ def save_own_team_site_editor():
         team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
         if not team:
             abort(404)
+        if not team_can_edit_own_site(team):
+            flash("Solo los equipos Web / HTML pueden editar su propia web.", "warning")
+            return redirect_back("development_dashboard")
         ensure_team_site_for_team(conn, team)
         site = team_site_by_team_id(conn, team["id"])
         if not site:
@@ -4464,6 +4627,9 @@ def publish_own_team_site_editor():
         team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
         if not team:
             abort(404)
+        if not team_can_edit_own_site(team):
+            flash("Solo los equipos Web / HTML pueden editar su propia web.", "warning")
+            return redirect_back("development_dashboard")
         ensure_team_site_for_team(conn, team)
         site = team_site_by_team_id(conn, team["id"])
         if not site:
@@ -4485,6 +4651,9 @@ def restore_own_team_site_editor():
         team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
         if not team:
             abort(404)
+        if not team_can_edit_own_site(team):
+            flash("Solo los equipos Web / HTML pueden editar su propia web.", "warning")
+            return redirect_back("development_dashboard")
         ensure_team_site_for_team(conn, team)
         site = team_site_by_team_id(conn, team["id"])
         if not site:

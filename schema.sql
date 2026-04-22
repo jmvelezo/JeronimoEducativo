@@ -58,6 +58,20 @@ CREATE TABLE IF NOT EXISTS team_sites (
     FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS team_point_adjustments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id INTEGER NOT NULL,
+    cycle_id INTEGER,
+    category TEXT NOT NULL DEFAULT 'other' CHECK(category IN ('participation', 'behavior', 'other')),
+    points_delta INTEGER NOT NULL,
+    reason TEXT,
+    created_by_user_id INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+    FOREIGN KEY (cycle_id) REFERENCES cycles(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
@@ -323,19 +337,4 @@ CREATE TABLE IF NOT EXISTS cycle_custom_charges (
     FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (applied_transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
-);
-
-
-CREATE TABLE IF NOT EXISTS team_point_adjustments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    team_id INTEGER NOT NULL,
-    cycle_id INTEGER,
-    category TEXT NOT NULL CHECK(category IN ('participation', 'behavior', 'other')),
-    points_delta INTEGER NOT NULL,
-    reason TEXT NOT NULL,
-    created_by_user_id INTEGER,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
-    FOREIGN KEY (cycle_id) REFERENCES cycles(id) ON DELETE SET NULL,
-    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
