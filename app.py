@@ -303,8 +303,6 @@ def restore_team_site_draft(conn, site_id: int, mode: str = "published") -> bool
 def build_team_site_preview_document(site_row, html_content: str, css_content: str) -> str:
     safe_html, safe_css = normalize_team_site_sources(site_row, html_content, css_content)
     team_name = html.escape(site_row["team_name"] if site_row and site_row["team_name"] else "Equipo")
-    fallback_html = '<section class="site-section"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'
-    preview_body = safe_html or fallback_html
     return f"""<!doctype html>
 <html lang=\"es\">
 <head>
@@ -327,7 +325,7 @@ def build_team_site_preview_document(site_row, html_content: str, css_content: s
     <div class=\"preview-frame\">
       <div class=\"preview-banner\">Vista previa de la web del equipo · No publicada todavía</div>
       <div class=\"preview-content team-site-content\">
-        {preview_body}
+        {safe_html or '<section class=\"site-section\"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'}
       </div>
     </div>
   </div>
@@ -1561,9 +1559,18 @@ def compute_team_scores(conn, team_rows):
 
     manual_points = manual_adjustments_by_team(conn)
     for row in team_rows:
-        team_id = row["id"]
-        base_points = panchicoin_points(row["wallet_balance"])
-        invested_points = panchicoin_points(client_invested[team_id]) if row["team_type"] == "robotica" else 0
+        row_data = dict(row)
+        team_id = row_data["id"]
+        team_type = row_data.get("team_type")
+        wallet_balance = row_data.get("wallet_balance")
+        if wallet_balance is None:
+            wallet_row = conn.execute(
+                "SELECT COALESCE(balance, 0) AS wallet_balance FROM wallets WHERE owner_type = 'team' AND owner_id = ? LIMIT 1",
+                (team_id,),
+            ).fetchone()
+            wallet_balance = wallet_row["wallet_balance"] if wallet_row else 0
+        base_points = panchicoin_points(wallet_balance)
+        invested_points = panchicoin_points(client_invested[team_id]) if team_type == "robotica" else 0
         success_bonus = successful_count[team_id] * SUCCESS_PROJECT_BONUS
         create_bonus = web_create_count[team_id] * WEB_CREATE_BONUS
         modify_bonus = web_modify_count[team_id] * WEB_MODIFY_BONUS
@@ -3224,6 +3231,7 @@ def admin_team_detail(team_id: int):
         reviews_by_contract = fetch_contract_reviews_map(conn, [row["id"] for row in contracts])
         open_cycle_info = team_in_open_cycle(conn, team_id)
         global_open_cycle = any_open_cycle(conn)
+        team_score_summary = compute_team_scores(conn, [team]).get(team_id, empty_score_summary())
     member_count = query_one(
         "SELECT COUNT(*) AS c FROM team_members WHERE team_id = ? AND active = 1", (team_id,)
     )["c"]
