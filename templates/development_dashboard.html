@@ -3,13 +3,13 @@
 <div class="section-header">
   <div>
     <h1>{% if team['service_track'] == 'web_html' %}Panel web / HTML · {{ team['name'] }}{% else %}Panel de desarrollo · {{ team['name'] }}{% endif %}</h1>
-    <p class="muted">{% if team['service_track'] == 'web_html' %}Este panel está pensado para equipos que ofrecen páginas web simples dentro de la economía general.{% else %}Este panel organiza portfolios, contratos y seguimiento técnico. Programación puede ver el estado de su web, pero solo los equipos Web / HTML la editan directamente.{% endif %}</p>
+    <p class="muted">{% if team['service_track'] == 'web_html' %}Este panel está pensado para equipos que ofrecen páginas web simples dentro de la economía general. La idea es mostrar mejor el producto visual, ejemplos y modo de trabajo.{% else %}El panel ahora pone más foco en la identidad visual del equipo y en portfolios que se editan como páginas propias.{% endif %}</p>
   </div>
   <div class="button-row wrap">
     <a class="btn-link secondary" href="{{ url_for('team_profile_manage') }}">Editar mi equipo</a>
     <a class="btn-link secondary" href="{{ url_for('marketplace') }}">Ver mercado</a>
     <a class="btn-link secondary" href="{{ url_for('team_rules_page') }}">Ver reglas</a>
-    {% if can_edit_own_team_site %}<a class="btn-link secondary" href="{{ url_for('development_team_site_editor') }}">Editar mi web</a>{% endif %}
+    <a class="btn-link secondary" href="{{ url_for('development_team_site_editor') }}">Editar mi web</a>
     {% if team_site_public_url %}<a class="btn-link secondary" href="{{ team_site_public_url }}" target="_blank" rel="noopener">Abrir mi web pública</a>{% elif team_site %}<span class="badge secondary">{{ team_site_state_label }}</span>{% endif %}
     <a class="btn-link" href="{{ url_for('development_new_portfolio') }}">Crear portfolio</a>
   </div>
@@ -20,15 +20,13 @@
     <div class="team-hero-inner">
       <div class="team-logo-wrap large">
         {% if team['logo_stored_filename'] %}
-          <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
-        {% elif team_gallery %}
-          <img class="team-logo-img" src="{{ url_for('team_gallery_file', stored_filename=team_gallery[0]['stored_filename']) }}" alt="Vista de {{ team['name'] }}">
+          <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
         {% else %}
           <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
         {% endif %}
       </div>
       <div>
-        <span class="badge">{% if team['service_track'] == 'web_html' %}Proveedor web{% else %}Desarrollo{% endif %}</span>
+        <span class="badge">{% if team['service_track'] == 'web_html' %}proveedor web{% else %}desarrollo{% endif %}</span>
         <span class="badge">{{ service_track_options.get(team['service_track'] or team['team_type'], team['service_track'] or team['team_type']) }}</span>
         <h2>{{ team['name'] }}</h2>
         <p>{{ team['profile_blurb'] or ('Todavía no cargaron una presentación visual del equipo. Pueden hacerlo desde “Editar mi equipo”.' if team['service_track'] != 'web_html' else 'Todavía no cargaron una presentación del estudio web. Pueden hacerlo desde “Editar mi equipo” para mostrar mejor cómo diseñan y presentan páginas.') }}</p>
@@ -37,25 +35,18 @@
           <span class="badge">Costo próximo: {{ maintenance }}</span>
           <span class="badge">Integrantes: {{ members|length }}</span>
           {% if team['service_track'] == 'web_html' %}
-            <span class="badge">Puede editar su web propia</span>
+            <span class="badge">Proveedor visual</span>
           {% else %}
-            <span class="badge">Puede contratar Web / HTML</span>
+            <span class="badge">Puede contratar web / HTML</span>
           {% endif %}
           <span class="badge secondary">{{ team_site_state_label }}</span>
-          {% if team['google_sheet_url'] %}<a class="btn-link secondary" href="{{ team['google_sheet_url'] }}" target="_blank" rel="noopener">Abrir Google Sheet</a>{% endif %}
-        </div>
-        <div class="chip-row top-gap">
-          <span class="badge">Puntaje visible: {{ team_score_summary['score'] }} pts</span>
-          {% if team_score_summary['manual_adjustment_points'] %}<span class="badge">Ajustes admin: {{ team_score_summary['manual_adjustment_points'] }}</span>{% endif %}
-          {% if team_score_summary['web_create_count'] %}<span class="badge">Webs creadas: {{ team_score_summary['web_create_count'] }}</span>{% endif %}
-          {% if team_score_summary['web_modify_count'] %}<span class="badge">Mejoras web: {{ team_score_summary['web_modify_count'] }}</span>{% endif %}
         </div>
       </div>
     </div>
     {% if team_gallery %}
       <div class="gallery-strip top-gap">
         {% for item in team_gallery %}
-          <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+          <img src="{{ url_for('public_team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
         {% endfor %}
       </div>
     {% endif %}
@@ -63,40 +54,22 @@
   </section>
 
   <section class="card">
-    <h2>Cómo se compone tu puntaje</h2>
-    <p class="muted">Esto no mezcla todo en una sola bolsa. Acá se separa qué viene de la economía, qué viene del trabajo entregado y qué viene de decisiones pedagógicas de admin.</p>
-    <div class="score-breakdown-grid top-gap">
-      <div class="score-breakdown-card"><span>JeroCoin disponibles</span><strong>{{ team_score_summary['base_points'] }} pts</strong><small>{{ wallet['balance'] }} JC guardados</small></div>
-      {% if team_score_summary['invested_points'] %}<div class="score-breakdown-card"><span>Inversión reconocida</span><strong>{{ team_score_summary['invested_points'] }} pts</strong><small>Solo aplica cuando robótica invirtió en trabajos cerrados con éxito</small></div>{% endif %}
-      <div class="score-breakdown-card"><span>Bonus por proyectos</span><strong>{{ team_score_summary['success_bonus'] }} pts</strong><small>{{ team_score_summary['success_count'] }} proyectos cerrados</small></div>
-      <div class="score-breakdown-card"><span>Bonus web</span><strong>{{ team_score_summary['web_create_bonus'] + team_score_summary['web_modify_bonus'] }} pts</strong><small>{{ team_score_summary['web_create_count'] }} creaciones · {{ team_score_summary['web_modify_count'] }} mejoras</small></div>
-      <div class="score-breakdown-card"><span>Ajustes admin</span><strong>{{ team_score_summary['manual_adjustment_points'] }}</strong><small>Participación, comportamiento u otro criterio</small></div>
-      <div class="score-breakdown-card negative"><span>Descuentos</span><strong>-{{ team_score_summary['return_penalty'] + team_score_summary['cancellation_penalty'] }} pts</strong><small>{{ team_score_summary['return_count'] }} devoluciones · {{ team_score_summary['cancellation_count'] }} cancelaciones</small></div>
-    </div>
-    <div class="legend-strip top-gap">
-      <span class="badge">JeroCoin = economía</span>
-      <span class="badge">Puntaje = ranking</span>
-      <span class="badge">Ajustes admin = criterio pedagógico</span>
+    <h2>Integrantes</h2>
+    <div class="roster-list">
+      {% for member in members %}
+        <div class="roster-item">
+          <div>
+            <strong>{{ member['full_name'] }}</strong>
+            <div class="muted">{{ member['course'] }}</div>
+          </div>
+          <span class="badge">{{ member['internal_role'] }}</span>
+        </div>
+      {% else %}
+        <p class="muted">Todavía no hay integrantes cargados.</p>
+      {% endfor %}
     </div>
   </section>
 </div>
-
-<section class="card">
-  <h2>Integrantes</h2>
-  <div class="roster-list">
-    {% for member in members %}
-      <div class="roster-item">
-        <div>
-          <strong>{{ member['full_name'] }}</strong>
-          <div class="muted">{{ member['course'] }}</div>
-        </div>
-        <span class="badge">{{ member['internal_role'] }}</span>
-      </div>
-    {% else %}
-      <p class="muted">Todavía no hay integrantes cargados.</p>
-    {% endfor %}
-  </div>
-</section>
 
 <section class="card">
   <div class="section-header">
@@ -110,9 +83,9 @@
       <article class="portfolio-card visual-card">
         <div class="portfolio-cover compact">
           {% if team_gallery %}
-            <img src="{{ url_for('team_gallery_file', stored_filename=team_gallery[0]['stored_filename']) }}" alt="Vista del equipo {{ team['name'] }}">
+            <img src="{{ url_for('public_team_gallery_file', stored_filename=team_gallery[0]['stored_filename']) }}" alt="Vista del equipo {{ team['name'] }}">
           {% elif team['logo_stored_filename'] %}
-            <img src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+            <img src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
           {% else %}
             <div class="portfolio-cover-placeholder">{{ team['name'][:2]|upper }}</div>
           {% endif %}
@@ -142,7 +115,7 @@
   <div class="section-header">
     <div>
       <h2>Ofertas públicas tomadas</h2>
-      <p class="muted">Estas ofertas nacieron desde tesorería. Funcionan como trabajos públicos que tu equipo puede tomar y cerrar con admin.</p>
+      <p class="muted">Estas ofertas nacieron desde tesorería. En esta fase funcionan como trabajos públicos que tu equipo puede tomar y cerrar con admin.</p>
     </div>
     <a class="btn-link secondary" href="{{ url_for('marketplace') }}">Buscar más ofertas</a>
   </div>
@@ -184,47 +157,385 @@
       <div class="section-header">
         <div>
           <strong>Contrato #{{ c['id'] }}</strong> con {{ c['provider_name'] or c['development_name'] }}
-          <div>Estado: <span class="badge">{{ c['status'] }}</span>{% if c['paused_by_deadline'] %}<span class="badge">Pausado por fecha</span>{% endif %}</div>
+          <div>Estado: <span class="badge">{{ c['status'] }}</span>{% if c['paused_by_deadline'] %} <span class="badge">pausado por fecha</span>{% endif %}</div>
+          <div>Servicio: {{ portfolio_service_category_options.get(c['service_category'] or 'programacion_robotica', c['service_category'] or 'programacion_robotica') }}</div>
+          {% if c['web_request_kind'] %}<div>Modo web: {{ web_request_kind_options.get(c['web_request_kind'], c['web_request_kind']) }}</div>{% endif %}
+          {% if c['provider_service_track'] %}<div>Línea proveedora: {{ service_track_options.get(c['provider_service_track'], c['provider_service_track']) }}</div>{% endif %}
+          <div>Monto: {{ c['requested_amount'] }} JeroCoin</div>
+          <div>Fecha esperada de entrega: {{ c['requested_delivery_date'] or '—' }}</div>
         </div>
         <div class="button-row wrap">
-          <a class="btn-link secondary" href="{{ url_for('contract_workspace', contract_id=c['id']) }}">Abrir seguimiento</a>
-          {% if c['last_delivery_id'] %}
-            <a class="btn-link secondary" href="{{ url_for('delivery_focus', delivery_id=c['last_delivery_id']) }}">Abrir entrega</a>
-          {% endif %}
+          <a class="btn-link secondary" href="{{ url_for('development_client_contract_detail', contract_id=c['id']) }}">Abrir seguimiento completo</a>
         </div>
+      </div>
+      {% if c['request_message'] %}
+        <p><strong>Pedido:</strong> {{ c['request_message'] }}</p>
+      {% endif %}
+      <div class="subsection">
+        <h3>Firma y comentarios del interventor</h3>
+        {% if c['last_interventor_username'] %}
+          <p><strong>Última firma:</strong> {{ c['last_interventor_username'] }} · {{ c['last_interventor_action'] or 'firma' }} · {{ c['last_interventor_signed_at'] or '—' }}</p>
+          <p><strong>Comentario:</strong> {{ c['last_interventor_comment'] or 'Sin comentario' }}</p>
+        {% else %}
+          <p class="muted">Todavía no hay firma registrada.</p>
+        {% endif %}
       </div>
     </article>
   {% else %}
-    {% if team['service_track'] != 'web_html' %}<p class="muted">Todavía no hay trabajos pedidos por este equipo.</p>{% endif %}
+    <p class="muted">Todavía no hay trabajos pedidos por tu equipo.</p>
   {% endfor %}
 </section>
 
 <section class="card">
-  <div class="section-header">
-    <div>
-      <h2>Contratos tomados</h2>
-      <p class="muted">Acá aparece el trabajo real del equipo: pedidos activos, entregas, devoluciones, aprobaciones y cierres firmados por interventores.</p>
-    </div>
-  </div>
+  <h2>Contratos y entregas</h2>
   {% for c in contracts %}
-    <article class="contract-card">
-      <div class="contract-card-top">
+    <article class="list-item">
+      <div class="section-header">
         <div>
-          <strong>Contrato #{{ c['id'] }}</strong>
-          <div class="muted">Cliente: {{ c['client_name'] or c['robotics_name'] }}</div>
+          <strong>Contrato #{{ c['id'] }}</strong> con {{ c['client_name'] or c['robotics_name'] }}
+          <div>Estado: <span class="badge">{{ c['status'] }}</span>{% if c['paused_by_deadline'] %} <span class="badge">pausado por fecha</span>{% endif %}</div>
+          <div>Servicio: {{ portfolio_service_category_options.get(c['service_category'] or 'programacion_robotica', c['service_category'] or 'programacion_robotica') }}</div>
+          {% if c['web_request_kind'] %}<div>Modo web: {{ web_request_kind_options.get(c['web_request_kind'], c['web_request_kind']) }}</div>{% endif %}
+          <div>Monto: {{ c['requested_amount'] }} JeroCoin</div>
+          <div>Fecha esperada de entrega: {{ c['requested_delivery_date'] or '—' }}</div>
         </div>
-        <div class="chip-row">
-          <span class="badge">{{ c['status'] }}</span>
-          {% if c['provider_service_track'] == 'web_html' %}<span class="badge">{{ web_request_kind_options.get(c['web_request_kind'] or 'modify', c['web_request_kind'] or 'modify') }}</span>{% endif %}
+        <div class="button-row wrap">
+          <a class="btn-link secondary" href="{{ url_for('development_contract_detail', contract_id=c['id']) }}">Abrir seguimiento completo</a>
         </div>
       </div>
-      <div class="button-row wrap top-gap">
-        <a class="btn-link secondary" href="{{ url_for('contract_workspace', contract_id=c['id']) }}">Abrir contrato</a>
-        {% if c['last_delivery_id'] %}<a class="btn-link secondary" href="{{ url_for('delivery_focus', delivery_id=c['last_delivery_id']) }}">Abrir entrega</a>{% endif %}
+
+      {% if c['request_message'] or c['request_stored_filename'] %}
+        <div class="subsection">
+          <h3>Pedido del equipo cliente</h3>
+          {% if c['request_message'] %}
+            <p>{{ c['request_message'] }}</p>
+          {% endif %}
+          {% if c['request_stored_filename'] %}
+            <p><a href="{{ url_for('download_request_file', stored_filename=c['request_stored_filename']) }}">Descargar {{ c['request_original_filename'] or 'archivo del pedido' }}</a>{% if c['request_file_size'] %} <span class="muted">({{ c['request_file_size'] }} bytes)</span>{% endif %}</p>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <div class="subsection">
+        <h3>Firma y comentarios del interventor</h3>
+        {% if c['last_interventor_username'] %}
+          <p><strong>Última firma:</strong> {{ c['last_interventor_username'] }} · {{ c['last_interventor_action'] or 'firma' }} · {{ c['last_interventor_signed_at'] or '—' }}</p>
+          <p><strong>Comentario:</strong> {{ c['last_interventor_comment'] or 'Sin comentario' }}</p>
+        {% else %}
+          <p class="muted">Todavía no hay firma registrada.</p>
+        {% endif %}
+        {% if reviews_by_contract.get(c['id']) %}
+          <details>
+            <summary>Ver historial de firmas</summary>
+            <div class="top-gap">
+              {% for review in reviews_by_contract.get(c['id'], []) %}
+                <div class="delivery-card">
+                  <div class="delivery-meta">
+                    <strong>{{ review['interventor_username'] or 'interventor' }}</strong>
+                    <span class="badge">{{ review['review_stage'] }}</span>
+                    <span class="badge">{{ review['decision'] }}</span>
+                    <span class="muted">{{ review['signed_at'] }}</span>
+                  </div>
+                  <p>{{ review['comment'] }}</p>
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+      </div>
+
+      {% if latest_return_reviews.get(c['id']) %}
+        <div class="return-highlight top-gap">
+          <div class="section-header compact">
+            <div>
+              <h3>Devolución pendiente de corregir</h3>
+              <p><strong>{{ latest_return_reviews[c['id']]['interventor_username'] or 'interventor' }}</strong> devolvió esta entrega el {{ latest_return_reviews[c['id']]['signed_at'] }}.</p>
+            </div>
+            <a class="btn-link secondary" href="{{ url_for('development_contract_detail', contract_id=c['id']) }}">Abrir devolución completa</a>
+          </div>
+          <p>{{ latest_return_reviews[c['id']]['comment'] }}</p>
+        </div>
+      {% endif %}
+      {% if c['paused_by_deadline'] %}
+        <div class="warning-box top-gap">
+          Este contrato quedó pausado porque venció la fecha comprometida. El interventor tiene que decidir si lo reactiva con una nueva fecha o si lo cancela.
+        </div>
+      {% endif %}
+
+      {% if c['status'] in ['active', 'in_development', 'correction_required'] and not c['paused_by_deadline'] %}
+        <form method="post" action="{{ url_for('submit_delivery', contract_id=c['id']) }}" class="form-grid inline-form" enctype="multipart/form-data">
+          <label>Notas de entrega
+            <input type="text" name="delivery_notes" placeholder="Qué incluye la entrega">
+          </label>
+          <label>Link repo/código
+            <input type="url" name="repository_link" placeholder="https://...">
+          </label>
+          <label>Código pegado en plataforma
+            <textarea name="code_text" rows="10" placeholder="Pegá acá el script, fragmento o explicación técnica."></textarea>
+          </label>
+          <label>Archivo adjunto
+            <input type="file" name="delivery_file" accept=".py,.txt,.md,.json,.csv,.zip,.rar,.7z,.ino,.c,.cpp,.h,.java,.js,.ts">
+          </label>
+          <p class="muted">La entrega debe incluir al menos una de estas tres cosas: código pegado, link o archivo.</p>
+          <button type="submit">Enviar a revisión</button>
+        </form>
+      {% endif %}
+
+      <div class="subsection ai-launcher-block">
+        <div class="section-header compact">
+          <div>
+            <h3>Asistente de explicación</h3>
+            <p class="muted">Abrí el panel lateral para conversar de forma más fluida sobre este contrato. El asistente explica, no resuelve con código.</p>
+          </div>
+          {% if ai_enabled %}
+            <button
+              type="button"
+              class="btn-link secondary ai-drawer-open"
+              data-contract-id="{{ c['id'] }}"
+              data-contract-title="Contrato #{{ c['id'] }} · {{ c['client_name'] or c['robotics_name'] }}"
+            >Abrir asistente IA</button>
+          {% endif %}
+        </div>
+        {% if not ai_enabled %}
+          <div class="warning-box top-gap">El asistente está desactivado porque la API key no está configurada en el servidor.</div>
+        {% endif %}
+        <template id="ai-history-template-{{ c['id'] }}">
+          {% if ai_messages_by_contract.get(c['id']) %}
+            {% for msg in ai_messages_by_contract.get(c['id'], []) %}
+              <div class="delivery-card ai-message-card">
+                <div class="delivery-meta">
+                  <strong>Consulta #{{ msg['id'] }}</strong>
+                  <span class="badge">{{ msg['status'] }}</span>
+                  {% if msg['model_name'] %}<span class="badge">{{ msg['model_name'] }}</span>{% endif %}
+                  <span class="muted">{{ msg['created_at'] }}</span>
+                </div>
+                <p><strong>Pregunta:</strong> {{ msg['question'] }}</p>
+                <p class="muted"><strong>Contexto usado:</strong> {{ msg['source_kind'] }}</p>
+                <div class="ai-response-box">{{ msg['response_text'] }}</div>
+                {% if msg['pasted_code'] %}
+                  <details>
+                    <summary>Ver fragmento enviado</summary>
+                    <pre class="code-box">{{ msg['pasted_code'] }}</pre>
+                  </details>
+                {% endif %}
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="muted empty-ai-history">Todavía no hay consultas guardadas para este contrato.</p>
+          {% endif %}
+        </template>
+      </div>
+
+      <div class="subsection">
+        <h3>Historial de entregas</h3>
+        {% for delivery in deliveries_by_contract.get(c['id'], []) %}
+          <div class="delivery-card">
+            <div class="delivery-meta">
+              <strong>Entrega #{{ delivery['id'] }}</strong>
+              <span class="badge">{{ delivery['status'] }}</span>
+              <span class="muted">{{ delivery['submitted_at'] }}</span>
+            </div>
+            {% if delivery['delivery_notes'] %}
+              <p><strong>Notas:</strong> {{ delivery['delivery_notes'] }}</p>
+            {% endif %}
+            <div class="chip-row">
+              {% if delivery['has_code'] %}<span class="badge">código</span>{% endif %}
+              {% if delivery['has_link'] %}<span class="badge">link</span>{% endif %}
+              {% if delivery['has_file'] %}<span class="badge">archivo</span>{% endif %}
+            </div>
+            {% if delivery['repository_link'] %}
+              <p><a href="{{ delivery['repository_link'] }}" target="_blank" rel="noopener">Abrir link</a></p>
+            {% endif %}
+            {% if delivery['stored_filename'] %}
+              <p><a href="{{ url_for('download_delivery_file', stored_filename=delivery['stored_filename']) }}">Descargar {{ delivery['original_filename'] }}</a>{% if delivery['file_size'] %} <span class="muted">({{ delivery['file_size'] }} bytes)</span>{% endif %}</p>
+            {% endif %}
+            {% if delivery['code_text'] %}
+              <details>
+                <summary>Ver código pegado</summary>
+                <pre class="code-box">{{ delivery['code_text'] }}</pre>
+              </details>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="muted">Todavía no hay entregas cargadas para este contrato.</p>
+        {% endfor %}
       </div>
     </article>
   {% else %}
-    <p class="muted">Todavía no hay contratos tomados por este equipo.</p>
+    <p>No hay contratos todavía.</p>
   {% endfor %}
 </section>
+
+
+{% if ai_enabled %}
+<div class="ai-drawer-backdrop" id="aiDrawerBackdrop" hidden></div>
+<aside class="ai-drawer" id="aiDrawer" aria-hidden="true" hidden>
+  <div class="ai-drawer-header">
+    <div>
+      <span class="badge">Asistente IA</span>
+      <h3 id="aiDrawerTitle">Contrato</h3>
+      <p class="muted">Hacé preguntas puntuales sobre el código de este contrato. El asistente explica y orienta, no escribe la solución.</p>
+    </div>
+    <button type="button" class="icon-btn" id="aiDrawerClose" aria-label="Cerrar asistente">×</button>
+  </div>
+  <div class="ai-drawer-body">
+    <div class="ai-drawer-status muted" id="aiDrawerStatus">Podés usar código pegado o dejar el campo vacío para que tome el último código disponible del contrato.</div>
+    <div class="ai-chat-history" id="aiChatHistory"></div>
+  </div>
+  <form class="ai-drawer-form" id="aiDrawerForm">
+    <input type="hidden" name="contract_id" id="aiDrawerContractId">
+    <label>Pregunta puntual
+      <input type="text" name="question" id="aiDrawerQuestion" maxlength="500" placeholder="Ej.: ¿por qué esta parte entra en bucle o qué hace esta función?" required>
+    </label>
+    <label>Fragmento de código (opcional)
+      <textarea name="assistant_code_text" id="aiDrawerCode" rows="8" placeholder="Si lo dejás vacío, el sistema intentará usar el último código pegado o un archivo de texto de este contrato."></textarea>
+    </label>
+    <div class="ai-drawer-actions">
+      <button type="submit" class="secondary-btn" id="aiDrawerSend">Enviar consulta</button>
+    </div>
+  </form>
+</aside>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if ai_enabled %}
+<script>
+(function() {
+  const drawer = document.getElementById('aiDrawer');
+  const backdrop = document.getElementById('aiDrawerBackdrop');
+  const closeBtn = document.getElementById('aiDrawerClose');
+  const historyEl = document.getElementById('aiChatHistory');
+  const titleEl = document.getElementById('aiDrawerTitle');
+  const statusEl = document.getElementById('aiDrawerStatus');
+  const form = document.getElementById('aiDrawerForm');
+  const sendBtn = document.getElementById('aiDrawerSend');
+  const contractInput = document.getElementById('aiDrawerContractId');
+  const questionInput = document.getElementById('aiDrawerQuestion');
+  const codeInput = document.getElementById('aiDrawerCode');
+  if (!drawer || !form) return;
+
+  function escapeHtml(value) {
+    return (value || '').replace(/[&<>"']/g, function(ch) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+
+  function buildMessageHtml(msg) {
+    return `
+      <div class="delivery-card ai-message-card">
+        <div class="delivery-meta">
+          <strong>Consulta #${escapeHtml(String(msg.id || ''))}</strong>
+          <span class="badge">${escapeHtml(msg.status || '')}</span>
+          ${msg.model_name ? `<span class="badge">${escapeHtml(msg.model_name)}</span>` : ''}
+          <span class="muted">${escapeHtml(msg.created_at || '')}</span>
+        </div>
+        <p><strong>Pregunta:</strong> ${escapeHtml(msg.question || '')}</p>
+        <p class="muted"><strong>Contexto usado:</strong> ${escapeHtml(msg.source_kind || '')}</p>
+        <div class="ai-response-box">${escapeHtml(msg.response_text || '')}</div>
+        ${msg.pasted_code ? `<details><summary>Ver fragmento enviado</summary><pre class="code-box">${escapeHtml(msg.pasted_code)}</pre></details>` : ''}
+      </div>
+    `;
+  }
+
+  function renderMessage(msg, prepend) {
+    const empty = historyEl.querySelector('.empty-ai-history');
+    if (empty) empty.remove();
+    const wrap = document.createElement('div');
+    wrap.innerHTML = buildMessageHtml(msg).trim();
+    const node = wrap.firstElementChild;
+    if (prepend && historyEl.firstChild) {
+      historyEl.insertBefore(node, historyEl.firstChild);
+    } else {
+      historyEl.appendChild(node);
+    }
+  }
+
+  function updateTemplateHistory(contractId, msg) {
+    const tpl = document.getElementById(`ai-history-template-${contractId}`);
+    if (!tpl) return;
+    const content = tpl.innerHTML || '';
+    const hasEmpty = content.includes('empty-ai-history');
+    tpl.innerHTML = hasEmpty ? buildMessageHtml(msg) : buildMessageHtml(msg) + content;
+  }
+
+  function openDrawer(contractId, title) {
+    contractInput.value = contractId;
+    titleEl.textContent = title;
+    historyEl.innerHTML = '';
+    const tpl = document.getElementById(`ai-history-template-${contractId}`);
+    if (tpl) {
+      historyEl.innerHTML = tpl.innerHTML;
+    }
+    drawer.hidden = false;
+    backdrop.hidden = false;
+    requestAnimationFrame(() => {
+      drawer.classList.add('is-open');
+      backdrop.classList.add('is-open');
+    });
+    drawer.setAttribute('aria-hidden', 'false');
+    questionInput.focus();
+    statusEl.textContent = 'Podés hacer varias consultas seguidas sobre este contrato sin salir de la página.';
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove('is-open');
+    backdrop.classList.remove('is-open');
+    drawer.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+      drawer.hidden = true;
+      backdrop.hidden = true;
+    }, 180);
+  }
+
+  document.querySelectorAll('.ai-drawer-open').forEach(btn => {
+    btn.addEventListener('click', () => openDrawer(btn.dataset.contractId, btn.dataset.contractTitle || 'Contrato'));
+  });
+
+  closeBtn.addEventListener('click', closeDrawer);
+  backdrop.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && drawer.classList.contains('is-open')) closeDrawer();
+  });
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const contractId = contractInput.value;
+    const payload = {
+      question: questionInput.value.trim(),
+      assistant_code_text: codeInput.value.trim()
+    };
+    if (!payload.question) {
+      statusEl.textContent = 'Escribí una pregunta puntual antes de enviar.';
+      return;
+    }
+    sendBtn.disabled = true;
+    statusEl.textContent = 'Consultando al asistente...';
+    try {
+      const response = await fetch(`/desarrollo/contracts/${contractId}/ai-help.json`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.message || 'No se pudo procesar la consulta.');
+      }
+      renderMessage(data.message, true);
+      updateTemplateHistory(contractId, data.message);
+      questionInput.value = '';
+      codeInput.value = '';
+      statusEl.textContent = data.message.status === 'blocked'
+        ? 'La respuesta se guardó, pero quedó bloqueada porque se parecía demasiado a código.'
+        : 'Consulta respondida y agregada al historial del contrato.';
+    } catch (err) {
+      statusEl.textContent = err.message || 'No se pudo consultar al asistente.';
+    } finally {
+      sendBtn.disabled = false;
+      questionInput.focus();
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

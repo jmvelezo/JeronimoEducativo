@@ -16,9 +16,7 @@
     <div class="team-hero-inner">
       <div class="team-logo-wrap large">
         {% if team['logo_stored_filename'] %}
-          <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
-        {% elif gallery %}
-          <img class="team-logo-img" src="{{ url_for('team_gallery_file', stored_filename=gallery[0]['stored_filename']) }}" alt="Vista de {{ team['name'] }}">
+          <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
         {% else %}
           <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
         {% endif %}
@@ -33,7 +31,7 @@
     {% if gallery %}
       <div class="gallery-strip top-gap">
         {% for item in gallery %}
-          <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+          <img src="{{ url_for('public_team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
         {% endfor %}
       </div>
     {% endif %}

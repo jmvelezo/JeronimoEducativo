@@ -58,9 +58,9 @@
       <article class="portfolio-card visual-card market-card">
         <div class="portfolio-cover {% if p['service_track'] == 'web_html' %}market-cover-web{% endif %}">
           {% if p['preview_gallery_image'] %}
-            <img src="{{ url_for('team_gallery_file', stored_filename=p['preview_gallery_image']) }}" alt="Vista previa de {{ p['team_name'] }}">
+            <img src="{{ url_for('public_team_gallery_file', stored_filename=p['preview_gallery_image']) }}" alt="Vista previa de {{ p['team_name'] }}">
           {% elif p['logo_stored_filename'] %}
-            <img src="{{ url_for('team_logo_file', stored_filename=p['logo_stored_filename']) }}" alt="Logo de {{ p['team_name'] }}">
+            <img src="{{ url_for('public_team_logo_file', stored_filename=p['logo_stored_filename']) }}" alt="Logo de {{ p['team_name'] }}">
           {% else %}
             <div class="portfolio-cover-placeholder">{{ p['team_name'][:2]|upper }}</div>
           {% endif %}

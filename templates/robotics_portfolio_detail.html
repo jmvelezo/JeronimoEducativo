@@ -15,7 +15,7 @@
     <div class="team-hero-inner">
       <div class="team-logo-wrap large">
         {% if portfolio['logo_stored_filename'] %}
-          <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=portfolio['logo_stored_filename']) }}" alt="Logo de {{ portfolio['dev_team_name'] }}">
+          <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=portfolio['logo_stored_filename']) }}" alt="Logo de {{ portfolio['dev_team_name'] }}">
         {% else %}
           <div class="team-logo-placeholder">{{ portfolio['dev_team_name'][:2]|upper }}</div>
         {% endif %}
@@ -43,7 +43,7 @@
       <div class="gallery-grid top-gap compact-gallery">
         {% for item in dev_gallery %}
           <article class="gallery-card public">
-            <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+            <img src="{{ url_for('public_team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
             {% if item['caption'] %}<div class="gallery-caption">{{ item['caption'] }}</div>{% endif %}
           </article>
         {% endfor %}
@@ -95,7 +95,7 @@
     {% if my_gallery %}
       <div class="gallery-strip top-gap">
         {% for item in my_gallery %}
-          <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+          <img src="{{ url_for('public_team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
         {% endfor %}
       </div>
     {% endif %}

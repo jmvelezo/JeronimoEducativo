@@ -17,30 +17,26 @@
     <div class="team-hero-inner">
       <div class="team-logo-wrap large">
         {% if team['logo_stored_filename'] %}
-          <img class="team-logo-img" src="{{ url_for('team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
-        {% elif team_gallery %}
-          <img class="team-logo-img" src="{{ url_for('team_gallery_file', stored_filename=team_gallery[0]['stored_filename']) }}" alt="Vista de {{ team['name'] }}">
+          <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
         {% else %}
           <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
         {% endif %}
       </div>
       <div>
-        <span class="badge">Robótica / hardware</span>
+        <span class="badge">robotica</span>
         <h2>{{ team['name'] }}</h2>
         <p>{{ team['profile_blurb'] or 'Todavía no cargaron una presentación visual del equipo. Pueden hacerlo desde “Editar mi equipo”.' }}</p>
         <div class="chip-row top-gap">
           <span class="badge">Saldo: {{ wallet['balance'] }} JeroCoin</span>
           <span class="badge">Contrato base: {{ settings['contract_price'] }} JeroCoin</span>
           {% if active_cycle %}<span class="badge">{{ active_cycle['name'] }}</span>{% endif %}
-          <span class="badge">Puntaje visible: {{ team_score_summary['score'] }} pts</span>
-          {% if team_score_summary['manual_adjustment_points'] %}<span class="badge">Ajustes admin: {{ team_score_summary['manual_adjustment_points'] }}</span>{% endif %}
         </div>
       </div>
     </div>
     {% if team_gallery %}
       <div class="gallery-strip top-gap">
         {% for item in team_gallery %}
-          <img src="{{ url_for('team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
+          <img src="{{ url_for('public_team_gallery_file', stored_filename=item['stored_filename']) }}" alt="{{ item['caption'] or 'Trabajo del equipo' }}">
         {% endfor %}
       </div>
     {% endif %}
@@ -76,24 +72,6 @@
     </div>
   </section>
 </div>
-
-<section class="card">
-  <h2>Cómo se compone el puntaje</h2>
-  <p class="muted">Acá se separa claramente la economía del equipo, los bonus por proyectos y los ajustes pedagógicos que puede cargar admin sin tocar la billetera.</p>
-  <div class="score-breakdown-grid top-gap">
-    <div class="score-breakdown-card"><span>Base por saldo</span><strong>{{ team_score_summary['base_points'] }} pts</strong><small>{{ wallet['balance'] }} JeroCoin disponibles</small></div>
-    <div class="score-breakdown-card"><span>Inversión reconocida</span><strong>{{ team_score_summary['invested_points'] }} pts</strong><small>Contratos exitosos ya realizados</small></div>
-    <div class="score-breakdown-card"><span>Bonus por proyectos</span><strong>{{ team_score_summary['success_bonus'] }} pts</strong><small>{{ team_score_summary['success_count'] }} cierres exitosos</small></div>
-    <div class="score-breakdown-card"><span>Bonus web</span><strong>{{ team_score_summary['web_create_bonus'] + team_score_summary['web_modify_bonus'] }} pts</strong><small>{{ team_score_summary['web_create_count'] }} creaciones · {{ team_score_summary['web_modify_count'] }} mejoras</small></div>
-    <div class="score-breakdown-card"><span>Ajustes admin</span><strong>{{ team_score_summary['manual_adjustment_points'] }}</strong><small>Participación, comportamiento u otro criterio</small></div>
-    <div class="score-breakdown-card negative"><span>Descuentos</span><strong>-{{ team_score_summary['return_penalty'] + team_score_summary['cancellation_penalty'] }} pts</strong><small>{{ team_score_summary['return_count'] }} devoluciones · {{ team_score_summary['cancellation_count'] }} cancelaciones</small></div>
-  </div>
-  <div class="legend-strip top-gap">
-    <span class="badge">JeroCoin = economía</span>
-    <span class="badge">Puntaje = ranking</span>
-    <span class="badge">Ajustes admin = criterio pedagógico</span>
-  </div>
-</section>
 
 <section class="card">
   <div class="section-header">
