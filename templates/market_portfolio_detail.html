@@ -32,6 +32,12 @@
         {% if portfolio['public_site_slug'] %}
           <a class="btn-link secondary" href="{{ url_for('public_team_site', slug=portfolio['public_site_slug']) }}" target="_blank" rel="noopener">Ver web pública del equipo</a>
         {% endif %}
+        {% if current_user and current_user['role'] == 'admin' %}
+          <form method="post" action="{{ url_for('admin_delete_portfolio', portfolio_id=portfolio['id']) }}" onsubmit="return confirm('¿Seguro que querés borrar este portfolio desde admin? Si tiene historial, se archivará en vez de borrarse.');">
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="danger-btn soft">Borrar portfolio</button>
+          </form>
+        {% endif %}
       </div>
     </div>
   </div>

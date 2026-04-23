@@ -575,6 +575,20 @@ def team_can_take_offer(team, offer) -> bool:
     return (team["service_track"] or "programacion") in offer_allowed_tracks(offer["service_category"])
 
 
+ACTIVE_PORTFOLIO_STATUSES = ('draft', 'published')
+
+
+def get_active_team_portfolio(conn, team_id: int, *, exclude_portfolio_id: int | None = None):
+    query = "SELECT * FROM portfolios WHERE team_id = ? AND status IN ('draft', 'published')"
+    params = [team_id]
+    if exclude_portfolio_id is not None:
+        query += " AND id != ?"
+        params.append(exclude_portfolio_id)
+    query += " ORDER BY CASE WHEN status = 'published' THEN 0 ELSE 1 END, updated_at DESC, id DESC LIMIT 1"
+    return conn.execute(query, tuple(params)).fetchone()
+
+
+
 def team_can_request_portfolio(client_team, portfolio) -> tuple[bool, str | None]:
     if not client_team or not portfolio:
         return False, "No se pudo validar el equipo o el portfolio."
@@ -4474,7 +4488,8 @@ def development_dashboard():
         team_gallery = fetch_team_gallery(conn, team["id"], limit=8)
         team_site = team_site_by_team_id(conn, team["id"])
         team_score_summary = compute_team_scores(conn, [team]).get(team["id"], empty_score_summary())
-    portfolios = query_all("SELECT * FROM portfolios WHERE team_id = ? ORDER BY id DESC", (team["id"],))
+    portfolios = query_all("SELECT * FROM portfolios WHERE team_id = ? ORDER BY CASE WHEN status = 'published' THEN 0 WHEN status = 'draft' THEN 1 ELSE 2 END, updated_at DESC, id DESC", (team["id"],))
+    active_portfolio = next((p for p in portfolios if p["status"] in ACTIVE_PORTFOLIO_STATUSES), None)
     contracts = query_all(
         """
         SELECT c.*, rt.name AS robotics_name, rt.name AS client_name,
@@ -4561,6 +4576,7 @@ def development_dashboard():
         team_site_state_label=("Web pública lista" if team_site and team_site["status"] == "published" else ("Web base creada" if team_site else "Todavía no tiene web")),
         can_edit_own_team_site=team_can_edit_own_site(team),
         team_score_summary=team_score_summary,
+        active_portfolio=active_portfolio,
     )
 
 
@@ -4678,6 +4694,10 @@ def development_new_portfolio():
     user = current_user()
     team = query_one("SELECT * FROM teams WHERE id = ?", (user["team_id"],))
     with get_connection() as conn:
+        active_portfolio = get_active_team_portfolio(conn, team["id"])
+        if active_portfolio:
+            flash("Tu equipo ya tiene un portfolio activo. Solo puede tener uno a la vez.", "warning")
+            return redirect(url_for("development_edit_portfolio", portfolio_id=active_portfolio["id"]))
         gallery = fetch_team_gallery(conn, team["id"], limit=8)
     return render_template("development_portfolio_form.html", team=team, gallery=gallery, portfolio=None, portfolio_service_category_options=PORTFOLIO_SERVICE_CATEGORY_OPTIONS, service_track_options=SERVICE_TRACK_OPTIONS)
 
@@ -4710,11 +4730,15 @@ def create_portfolio():
     if not title:
         flash("El portfolio necesita un título.", "danger")
         return redirect(url_for("development_new_portfolio"))
-    portfolio_id = execute(
-        "INSERT INTO portfolios (team_id, title, description, skills, tools, work_style, service_category, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'published')",
-        (user["team_id"], title, description, skills, tools, work_style, service_category),
-    )
     with get_connection() as conn:
+        active_portfolio = get_active_team_portfolio(conn, user["team_id"])
+        if active_portfolio:
+            flash("Tu equipo ya tiene un portfolio activo. Archivá o eliminá ese primero antes de crear otro.", "warning")
+            return redirect(url_for("development_edit_portfolio", portfolio_id=active_portfolio["id"]))
+        portfolio_id = conn.execute(
+            "INSERT INTO portfolios (team_id, title, description, skills, tools, work_style, service_category, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'published')",
+            (user["team_id"], title, description, skills, tools, work_style, service_category),
+        ).lastrowid
         log_action(conn, user["id"], "create_portfolio", "portfolio", portfolio_id, f"{title} · {service_category}")
         conn.commit()
     flash("Portfolio creado y publicado.", "success")
@@ -4743,6 +4767,11 @@ def update_portfolio(portfolio_id: int):
         if not portfolio:
             flash("Portfolio no encontrado.", "danger")
             return redirect_back("development_dashboard")
+        if status in ACTIVE_PORTFOLIO_STATUSES:
+            other_active_portfolio = get_active_team_portfolio(conn, user['team_id'], exclude_portfolio_id=portfolio_id)
+            if other_active_portfolio:
+                flash("Tu equipo ya tiene otro portfolio activo. Solo puede mantener uno a la vez.", "warning")
+                return redirect(url_for("development_edit_portfolio", portfolio_id=other_active_portfolio['id']))
         conn.execute(
             "UPDATE portfolios SET title = ?, description = ?, skills = ?, tools = ?, work_style = ?, service_category = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (title, description, skills, tools, work_style, service_category, status, portfolio_id),
@@ -4774,6 +4803,38 @@ def delete_portfolio(portfolio_id: int):
         conn.commit()
     flash("Portfolio borrado.", "success")
     return redirect_back("development_dashboard")
+
+
+@app.route("/admin/portfolio/<int:portfolio_id>/delete", methods=["POST"])
+@role_required("admin")
+def admin_delete_portfolio(portfolio_id: int):
+    user = current_user()
+    next_target = request.form.get("next")
+    with get_connection() as conn:
+        portfolio = conn.execute(
+            """
+            SELECT p.*, t.name AS team_name
+            FROM portfolios p
+            JOIN teams t ON t.id = p.team_id
+            WHERE p.id = ?
+            """,
+            (portfolio_id,),
+        ).fetchone()
+        if not portfolio:
+            flash("Portfolio no encontrado.", "danger")
+            return safe_redirect_target(next_target, "marketplace")
+        contract_count = conn.execute("SELECT COUNT(*) AS c FROM contracts WHERE portfolio_id = ?", (portfolio_id,)).fetchone()["c"]
+        if contract_count > 0:
+            conn.execute("UPDATE portfolios SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (portfolio_id,))
+            log_action(conn, user['id'], 'archive_portfolio_admin', 'portfolio', portfolio_id, portfolio['title'])
+            conn.commit()
+            flash("El portfolio tenía historial. Se archivó en vez de borrarse.", "warning")
+            return safe_redirect_target(next_target, "marketplace")
+        conn.execute("DELETE FROM portfolios WHERE id = ?", (portfolio_id,))
+        log_action(conn, user['id'], 'delete_portfolio_admin', 'portfolio', portfolio_id, portfolio['title'])
+        conn.commit()
+    flash("Portfolio borrado desde admin.", "success")
+    return safe_redirect_target(next_target, "marketplace")
 
 
 @app.route("/desarrollo/contracts/<int:contract_id>/web-editor/save", methods=["POST"])
