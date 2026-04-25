@@ -2159,3 +2159,50 @@ body.lightbox-open {
     break-inside: avoid;
   }
 }
+
+/* Hotfix visual home cards: puesto arriba a la derecha y logo libre arriba */
+.landing-team-card {
+  position: relative;
+  overflow: hidden;
+  grid-template-rows: auto 1fr auto;
+}
+.landing-team-card .landing-team-card-head {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+.landing-team-card .landing-team-card-head .team-message-indicator {
+  pointer-events: auto;
+}
+.landing-team-card .landing-team-top {
+  padding-right: 52px;
+}
+.landing-team-card .landing-score-row {
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: auto;
+}
+.landing-team-card .landing-score-row .small-link {
+  margin-left: auto;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .landing-team-card .landing-team-top {
+    padding-right: 44px;
+  }
+  .landing-team-card .landing-team-card-head {
+    top: 12px;
+    right: 12px;
+  }
+  .landing-team-card .team-local-rank {
+    width: 32px;
+    height: 32px;
+  }
+}
