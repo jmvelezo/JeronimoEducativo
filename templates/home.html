@@ -113,7 +113,7 @@
   <div class="section-header">
     <div>
       <h2>Equipos por curso</h2>
-      <p class="muted">Cada curso aparece con sus equipos, su identidad visual y su puntaje actual. El ranking visible ahora combina economía, proyectos cerrados, bonus web y ajustes manuales cargados desde admin.</p>
+      <p class="muted">Cada curso aparece con sus equipos, su identidad visual y su puntaje actual. El ranking visible combina economía, proyectos cerrados, bonus web y ajustes manuales; ahora cada tarjeta también muestra su posición local y permite abrir una vista ampliada del equipo desde la imagen.</p>
     </div>
   </div>
 
@@ -127,17 +127,47 @@
         <div class="landing-team-grid">
           {% for team in section.teams %}
             {% set team_site_url = url_for('public_team_preview', team_id=team['id']) %}
-            <article class="landing-team-card {% if team_site_url %}team-card-clickable{% endif %}">
+            {% set card_classes = ['landing-team-card'] %}
+            {% if team['local_rank_class'] %}{% set _ = card_classes.append(team['local_rank_class']) %}{% endif %}
+            <article class="{{ card_classes|join(' ') }}">
+              <div class="landing-team-card-head">
+                <span class="team-local-rank {{ team['local_rank_class'] }}">{{ team['local_rank'] }}</span>
+                {% if team['has_message_alert'] %}
+                  <span class="team-message-indicator" title="Este equipo tiene mensajes pendientes">✉</span>
+                {% endif %}
+              </div>
               <div class="landing-team-top">
-                <div class="team-logo-wrap">
+                <button
+                  type="button"
+                  class="team-image-trigger"
+                  data-team-name="{{ team['name']|e }}"
+                  data-team-course="{{ team['course_label']|e }}"
+                  data-team-description="{{ (team['profile_blurb'] or 'Este equipo todavía no cargó una descripción ampliada.')|e }}"
+                  data-team-score="{{ team['score'] }}"
+                  data-team-rank="{{ team['local_rank'] }}"
+                  data-team-rank-class="{{ team['local_rank_class'] }}"
+                  data-team-rank-label="Puesto local #{{ team['local_rank'] }}"
+                  data-team-alerts="{{ team['message_alert_count'] }}"
                   {% if team['logo_stored_filename'] %}
-                    <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+                  data-team-image="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}"
                   {% elif team['preview_gallery_image'] %}
-                    <img class="team-logo-img" src="{{ url_for('public_team_gallery_file', stored_filename=team['preview_gallery_image']) }}" alt="Vista del equipo {{ team['name'] }}">
+                  data-team-image="{{ url_for('public_team_gallery_file', stored_filename=team['preview_gallery_image']) }}"
                   {% else %}
-                    <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
+                  data-team-image=""
                   {% endif %}
-                </div>
+                  data-team-initials="{{ team['name'][:2]|upper }}"
+                  aria-label="Abrir presentación visual de {{ team['name'] }}"
+                >
+                  <div class="team-logo-wrap {{ team['local_rank_class'] }}">
+                    {% if team['logo_stored_filename'] %}
+                      <img class="team-logo-img" src="{{ url_for('public_team_logo_file', stored_filename=team['logo_stored_filename']) }}" alt="Logo de {{ team['name'] }}">
+                    {% elif team['preview_gallery_image'] %}
+                      <img class="team-logo-img" src="{{ url_for('public_team_gallery_file', stored_filename=team['preview_gallery_image']) }}" alt="Vista del equipo {{ team['name'] }}">
+                    {% else %}
+                      <div class="team-logo-placeholder">{{ team['name'][:2]|upper }}</div>
+                    {% endif %}
+                  </div>
+                </button>
                 <div>
                   <a class="team-name-link" href="{{ team_site_url }}" target="_blank" rel="noopener"><strong>{{ team['name'] }}</strong></a>
                   <div class="muted">{{ team['course_label'] }}</div>
@@ -195,11 +225,38 @@
   {% endfor %}
 </section>
 
+<div class="team-spotlight-modal" id="teamSpotlightModal" aria-hidden="true">
+  <div class="team-spotlight-modal__backdrop" data-close-team-modal></div>
+  <div class="team-spotlight-modal__dialog" role="dialog" aria-modal="true" aria-label="Vista ampliada del equipo">
+    <button type="button" class="team-spotlight-modal__close" id="teamSpotlightClose" aria-label="Cerrar vista ampliada">×</button>
+    <div class="team-spotlight-shell" id="teamSpotlightShell">
+      <div class="team-spotlight-visuals" aria-hidden="true">
+        <span class="team-spotlight-glow left"></span>
+        <span class="team-spotlight-glow right"></span>
+        <span class="team-spotlight-stars one"></span>
+        <span class="team-spotlight-stars two"></span>
+      </div>
+      <div class="team-spotlight-media" id="teamSpotlightMedia"></div>
+      <div class="team-spotlight-copy">
+        <div class="team-spotlight-meta">
+          <span class="team-local-rank" id="teamSpotlightRank">0</span>
+          <span class="badge secondary" id="teamSpotlightCourse">Curso</span>
+          <span class="badge secondary" id="teamSpotlightScore">0 pts</span>
+          <span class="badge secondary hidden" id="teamSpotlightAlerts">✉ 0 mensajes</span>
+        </div>
+        <h3 id="teamSpotlightName">Equipo</h3>
+        <p class="muted" id="teamSpotlightRankLabel">Puesto local</p>
+        <p id="teamSpotlightDescription">Descripción del equipo.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <section class="card">
   <div class="section-header">
     <div>
       <h2>Ranking general</h2>
-      <p class="muted">Los primeros puestos brillan por su rendimiento y los últimos muestran que todavía tienen terreno para remontar. Este ranking ya incluye también los ajustes manuales de puntaje aplicados por admin.</p>
+      <p class="muted">Los primeros puestos brillan por su rendimiento y los últimos muestran que todavía tienen terreno para remontar. Este ranking también incluye los ajustes manuales de puntaje aplicados por admin.</p>
     </div>
   </div>
   <div class="ranking-list">
@@ -254,4 +311,79 @@
     <button type="submit">Entrar</button>
   </form>
 </section>
+{% block scripts %}
+<script>
+(function () {
+  const modal = document.getElementById('teamSpotlightModal');
+  const closeBtn = document.getElementById('teamSpotlightClose');
+  const shell = document.getElementById('teamSpotlightShell');
+  const media = document.getElementById('teamSpotlightMedia');
+  const nameEl = document.getElementById('teamSpotlightName');
+  const courseEl = document.getElementById('teamSpotlightCourse');
+  const scoreEl = document.getElementById('teamSpotlightScore');
+  const rankEl = document.getElementById('teamSpotlightRank');
+  const rankLabelEl = document.getElementById('teamSpotlightRankLabel');
+  const descEl = document.getElementById('teamSpotlightDescription');
+  const alertsEl = document.getElementById('teamSpotlightAlerts');
+  const triggers = document.querySelectorAll('.team-image-trigger');
+  if (!modal || !closeBtn || !shell || !media || !triggers.length) return;
+
+  function closeModal() {
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('lightbox-open');
+  }
+
+  function openModal(trigger) {
+    const image = trigger.getAttribute('data-team-image') || '';
+    const initials = trigger.getAttribute('data-team-initials') || 'EQ';
+    const name = trigger.getAttribute('data-team-name') || 'Equipo';
+    const course = trigger.getAttribute('data-team-course') || 'Sin curso';
+    const description = trigger.getAttribute('data-team-description') || 'Sin descripción disponible.';
+    const score = trigger.getAttribute('data-team-score') || '0';
+    const rank = trigger.getAttribute('data-team-rank') || '0';
+    const rankClass = trigger.getAttribute('data-team-rank-class') || '';
+    const rankLabel = trigger.getAttribute('data-team-rank-label') || '';
+    const alerts = parseInt(trigger.getAttribute('data-team-alerts') || '0', 10);
+
+    shell.classList.remove('rank-first', 'rank-second', 'rank-third', 'rank-last', 'rank-penultimate', 'rank-antepenultimate');
+    if (rankClass) {
+      rankClass.split(' ').forEach(cls => cls && shell.classList.add(cls));
+    }
+    rankEl.className = 'team-local-rank ' + rankClass;
+    rankEl.textContent = rank;
+    nameEl.textContent = name;
+    courseEl.textContent = course;
+    scoreEl.textContent = score + ' pts';
+    rankLabelEl.textContent = rankLabel;
+    descEl.textContent = description;
+    if (alerts > 0) {
+      alertsEl.classList.remove('hidden');
+      alertsEl.textContent = '✉ ' + alerts + ' mensaje' + (alerts === 1 ? '' : 's');
+    } else {
+      alertsEl.classList.add('hidden');
+    }
+
+    if (image) {
+      media.innerHTML = '<img src="' + image + '" alt="Vista ampliada de ' + name.replace(/"/g, '&quot;') + '" class="team-spotlight-img">';
+    } else {
+      media.innerHTML = '<div class="team-spotlight-placeholder">' + initials + '</div>';
+    }
+
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('lightbox-open');
+  }
+
+  triggers.forEach(trigger => trigger.addEventListener('click', () => openModal(trigger)));
+  closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', function (event) {
+    if (event.target.hasAttribute('data-close-team-modal')) closeModal();
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && modal.classList.contains('is-open')) closeModal();
+  });
+})();
+</script>
+{% endblock %}
 {% endblock %}

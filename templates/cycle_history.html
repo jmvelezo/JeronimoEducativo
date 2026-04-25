@@ -1,0 +1,275 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="history-hero card {% if is_print_view %}print-view{% endif %}">
+  <div>
+    <p class="eyebrow">Fase 9 · Cierre e historial</p>
+    <h1>{% if selected_cycle %}Historial de {{ selected_cycle['name'] }}{% else %}Historial del proyecto{% endif %}</h1>
+    <p class="muted">Vista de cierre para leer ranking, contratos, mensajes y actividad sin modificar la economía ni los estados existentes.</p>
+    {% if selected_cycle %}
+      <div class="chip-row top-gap">
+        <span class="badge">{{ cycle_state }}</span>
+        <span class="badge">Inicio: {{ format_display_date(selected_cycle['start_date']) }}</span>
+        <span class="badge">Fin: {{ format_display_date(selected_cycle['end_date']) }}</span>
+      </div>
+    {% endif %}
+  </div>
+  <div class="button-row wrap no-print">
+    <a class="btn-link secondary" href="{{ url_for('dashboard') }}">Volver al panel</a>
+    {% if selected_cycle %}
+      <a class="btn-link secondary" href="{{ url_for('cycle_history', cycle_id=selected_cycle['id'], print=1) }}" target="_blank" rel="noopener">Vista imprimible</a>
+      {% if current_user['role'] in ['admin', 'interventor'] %}
+        <a class="btn-link secondary" href="{{ url_for('admin_cycle_detail', cycle_id=selected_cycle['id']) }}">Detalle del ciclo</a>
+      {% endif %}
+    {% endif %}
+  </div>
+</section>
+
+<section class="card no-print">
+  <div class="section-header compact">
+    <div>
+      <h2>Seleccionar ciclo</h2>
+      <p class="muted">El reporte se calcula sobre el ciclo elegido. Si no hay ciclo seleccionado, usa el activo o el más reciente.</p>
+    </div>
+  </div>
+  <div class="history-cycle-strip">
+    {% for cycle in cycles %}
+      <a class="history-cycle-pill {{ 'active' if selected_cycle and cycle['id'] == selected_cycle['id'] else '' }}" href="{{ url_for('cycle_history', cycle_id=cycle['id']) }}">
+        <strong>{{ cycle['name'] }}</strong>
+        <span>{{ cycle['status'] }} · {{ cycle['team_count'] }} equipos · {{ cycle['contract_count'] }} contratos</span>
+      </a>
+    {% else %}
+      <p class="muted">Todavía no hay ciclos cargados.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="history-kpi-grid">
+  <article class="card history-kpi">
+    <span>Equipos</span>
+    <strong>{{ team_count }}</strong>
+    <small>participantes del ciclo</small>
+  </article>
+  <article class="card history-kpi">
+    <span>Contratos cerrados</span>
+    <strong>{{ closed_contract_count }}</strong>
+    <small>con pago liberado</small>
+  </article>
+  <article class="card history-kpi {{ 'needs-attention' if open_contract_count else '' }}">
+    <span>Contratos abiertos</span>
+    <strong>{{ open_contract_count }}</strong>
+    <small>no cerrados ni cancelados</small>
+  </article>
+  <article class="card history-kpi">
+    <span>Pagos liberados</span>
+    <strong>{{ total_released }}</strong>
+    <small>JeroCoin del ciclo</small>
+  </article>
+  <article class="card history-kpi">
+    <span>Mensajes</span>
+    <strong>{{ message_stats['total'] }}</strong>
+    <small>{{ message_stats['closed'] }} cerrados · {{ message_stats['pending'] }} pendientes</small>
+  </article>
+</section>
+
+<section class="card">
+  <div class="section-header compact">
+    <div>
+      <h2>Lectura de cierre</h2>
+      <p class="muted">No es una acción automática de cierre: es una foto ordenada para evaluar el ciclo y decidir próximos pasos.</p>
+    </div>
+  </div>
+  <div class="grid four history-highlight-grid">
+    <article class="history-highlight">
+      <span>Mayor puntaje</span>
+      {% if highlights['top_score'] %}
+        <strong>#{{ highlights['top_score']['rank'] }} · {{ highlights['top_score']['name'] }}</strong>
+        <small>{{ highlights['top_score']['score'] }} pts</small>
+      {% else %}<p class="muted">Sin datos.</p>{% endif %}
+    </article>
+    <article class="history-highlight">
+      <span>Más contratos exitosos</span>
+      {% if highlights['top_success'] %}
+        <strong>{{ highlights['top_success']['name'] }}</strong>
+        <small>{{ highlights['top_success']['success_count'] }} cerrados</small>
+      {% else %}<p class="muted">Sin cierres exitosos.</p>{% endif %}
+    </article>
+    <article class="history-highlight">
+      <span>Mayor inversión robótica</span>
+      {% if highlights['top_investment'] %}
+        <strong>{{ highlights['top_investment']['name'] }}</strong>
+        <small>{{ highlights['top_investment']['client_invested'] }} JeroCoin invertidos</small>
+      {% else %}<p class="muted">Sin inversión cerrada.</p>{% endif %}
+    </article>
+    <article class="history-highlight">
+      <span>Mayor producción web</span>
+      {% if highlights['top_web'] %}
+        <strong>{{ highlights['top_web']['name'] }}</strong>
+        <small>{{ highlights['top_web']['web_create_count'] }} creaciones · {{ highlights['top_web']['web_modify_count'] }} mejoras</small>
+      {% else %}<p class="muted">Sin producción web cerrada.</p>{% endif %}
+    </article>
+  </div>
+  <div class="warning-box top-gap">
+    <strong>Regla de puntaje usada:</strong> {{ points_rule }}. En esta vista los contratos, devoluciones, cancelaciones y ajustes se recortan al ciclo seleccionado; el saldo de billetera es una foto actual.
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-header compact">
+    <div>
+      <h2>Ranking final del ciclo</h2>
+      <p class="muted">Orden general con desglose suficiente para explicar el resultado.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table history-ranking-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Equipo</th>
+          <th>Curso</th>
+          <th>Tipo</th>
+          <th>Puntaje</th>
+          <th>Saldo pts</th>
+          <th>Éxitos</th>
+          <th>Web</th>
+          <th>Ajustes</th>
+          <th>Penalizaciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for team in ranking %}
+          <tr>
+            <td><span class="rank-pill small">{{ team['rank'] }}</span></td>
+            <td><strong>{{ team['name'] }}</strong></td>
+            <td>{{ team['course_label'] }}</td>
+            <td>{{ team['team_type'] }}{% if team['service_track'] %} · {{ service_track_label(team['service_track']) }}{% endif %}</td>
+            <td><strong>{{ team['score'] }}</strong></td>
+            <td>{{ team['base_points'] }}</td>
+            <td>{{ team['success_count'] }} / +{{ team['success_bonus'] }}</td>
+            <td>{{ team['web_create_count'] }} C · {{ team['web_modify_count'] }} M</td>
+            <td>{{ team['manual_adjustment_points'] }}</td>
+            <td>-{{ team['return_penalty'] + team['cancellation_penalty'] }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="10" class="muted">No hay equipos para este ciclo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-header compact">
+    <div>
+      <h2>Ranking por curso</h2>
+      <p class="muted">Útil para cerrar con lectura local además del ranking general.</p>
+    </div>
+  </div>
+  <div class="history-course-grid">
+    {% for section in course_sections %}
+      <article class="card info-subcard history-course-card">
+        <h3>{{ section['course_label'] }}</h3>
+        <ol class="history-course-list">
+          {% for team in section['ranking'] %}
+            <li>
+              <span class="rank-pill small">{{ team['local_rank'] }}</span>
+              <strong>{{ team['name'] }}</strong>
+              <span>{{ team['score'] }} pts</span>
+            </li>
+          {% endfor %}
+        </ol>
+      </article>
+    {% else %}
+      <p class="muted">No hay cursos para mostrar.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <div class="section-header compact">
+      <div>
+        <h2>Contratos por estado</h2>
+        <p class="muted">Semáforo rápido para saber si el ciclo puede cerrarse administrativamente.</p>
+      </div>
+    </div>
+    <div class="interventor-mini-grid">
+      {% for row in status_summary %}
+        <div class="interventor-mini-tile">
+          <span>{{ contract_status_label(row['status']) }}</span>
+          <strong>{{ row['total'] }}</strong>
+        </div>
+      {% else %}
+        <p class="muted">Sin contratos.</p>
+      {% endfor %}
+    </div>
+  </section>
+  <section class="card">
+    <div class="section-header compact">
+      <div>
+        <h2>Origen de contratos</h2>
+        <p class="muted">Distingue contratos normales y ofertas públicas tomadas.</p>
+      </div>
+    </div>
+    <div class="interventor-mini-grid">
+      {% for row in origin_summary %}
+        <div class="interventor-mini-tile">
+          <span>{{ 'Contrato normal' if row['contract_origin'] == 'team_request' else 'Oferta pública' }}</span>
+          <strong>{{ row['total'] }}</strong>
+        </div>
+      {% else %}
+        <p class="muted">Sin contratos.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="section-header compact">
+    <div>
+      <h2>Historial de contratos</h2>
+      <p class="muted">Últimos 120 contratos del ciclo, con estado y trazabilidad básica.</p>
+    </div>
+  </div>
+  <div class="history-contract-list">
+    {% for contract in contract_rows %}
+      <article class="history-contract-item {{ contract['status'] }}">
+        <div>
+          <strong>Contrato #{{ contract['id'] }} · {{ contract_status_label(contract['status']) }}</strong>
+          <p>{{ contract['client_name'] }} → {{ contract['provider_name'] }}</p>
+          <small>{{ 'Oferta pública' if contract['contract_origin'] == 'admin_offer' else 'Contrato normal' }} · {{ contract['requested_amount'] }} JeroCoin · {{ contract['delivery_count'] }} entrega(s) · {{ contract['review_count'] }} firma(s)</small>
+        </div>
+        <div class="button-row wrap no-print">
+          {% if current_user['role'] in ['admin', 'interventor'] %}
+            <a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=contract['id']) }}">Detalle</a>
+          {% endif %}
+        </div>
+      </article>
+    {% else %}
+      <p class="muted">No hay contratos registrados para este ciclo.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card no-print">
+  <div class="section-header compact">
+    <div>
+      <h2>Actividad reciente relacionada</h2>
+      <p class="muted">Rastreo rápido desde audit_log. Sirve como apoyo, no reemplaza el detalle formal del contrato.</p>
+    </div>
+  </div>
+  <div class="compact-list">
+    {% for item in recent_activity %}
+      <article class="compact-attention-item">
+        <div>
+          <strong>{{ item['action'] }}</strong>
+          <p class="muted">{{ item['created_at'] }} · {{ item['username'] or 'sistema' }}{% if item['contract_id'] %} · contrato #{{ item['contract_id'] }}{% endif %}</p>
+          {% if item['details'] %}<small>{{ item['details'] }}</small>{% endif %}
+        </div>
+      </article>
+    {% else %}
+      <p class="muted">No hay actividad reciente para mostrar.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

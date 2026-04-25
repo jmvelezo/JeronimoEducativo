@@ -289,4 +289,61 @@
     {% endfor %}
   </section>
 </div>
+<section class="card">
+  <div class="section-header compact">
+    <div>
+      <h2>Solicitudes de información extra</h2>
+      <p class="muted">Este espacio sirve para pedir o responder información complementaria del contrato. Cada mensaje pasa por interventoría antes de salir o de cerrar.</p>
+    </div>
+    {% if team_message_notifications and team_message_notifications['badge_total'] %}
+      <span class="badge warning">{{ team_message_notifications['badge_total'] }} aviso(s)</span>
+    {% endif %}
+  </div>
+
+  {% if can_request_contract_message %}
+    <form method="post" action="{{ url_for('contract_message_request', contract_id=contract['id']) }}" class="form-grid inline-form">
+      <input type="hidden" name="next" value="{{ request.path }}">
+      <label>¿Qué información necesitás pedir?
+        <textarea name="request_text" rows="4" maxlength="1200" placeholder="Escribí qué detalle falta para poder avanzar mejor con el contrato."></textarea>
+      </label>
+      <button type="submit">Enviar a interventoría</button>
+    </form>
+  {% elif viewer_team_id and current_contract and current_contract['status'] not in ['closed', 'cancelled'] %}
+    <p class="muted">Ya hay una solicitud abierta en esta dirección o el contrato no admite nuevos pedidos en este momento.</p>
+  {% endif %}
+
+  <div class="subsection">
+    {% for msg in contract_messages %}
+      <article class="delivery-card">
+        <div class="delivery-meta">
+          <strong>{{ msg['sender_team_name'] }}</strong>
+          <span class="badge">{{ msg['status'] }}</span>
+          <span class="muted">Contrato #{{ msg['contract_id'] }} · {{ msg['created_at'] }}</span>
+        </div>
+        <p><strong>Solicitud:</strong> {{ msg['request_text'] }}</p>
+        {% if msg['request_interventor_comment'] %}
+          <p class="muted"><strong>Interventoría:</strong> {{ msg['request_interventor_comment'] }}</p>
+        {% endif %}
+        {% if msg['status'] == 'delivered' and msg['recipient_team_id'] == viewer_team_id and not msg['response_text'] %}
+          <form method="post" action="{{ url_for('contract_message_respond', contract_id=contract['id'], message_id=msg['id']) }}" class="form-grid inline-form top-gap">
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <label>Responder solicitud
+              <textarea name="response_text" rows="4" maxlength="1200" placeholder="Respondé con la información necesaria para que el otro equipo pueda seguir."></textarea>
+            </label>
+            <button type="submit">Enviar respuesta a interventoría</button>
+          </form>
+        {% endif %}
+        {% if msg['response_text'] %}
+          <p class="top-gap"><strong>Respuesta:</strong> {{ msg['response_text'] }}</p>
+        {% endif %}
+        {% if msg['response_interventor_comment'] %}
+          <p class="muted"><strong>Interventoría sobre la respuesta:</strong> {{ msg['response_interventor_comment'] }}</p>
+        {% endif %}
+      </article>
+    {% else %}
+      <p class="muted">Todavía no hay solicitudes de información extra en este contrato.</p>
+    {% endfor %}
+  </div>
+</section>
+
 {% endblock %}

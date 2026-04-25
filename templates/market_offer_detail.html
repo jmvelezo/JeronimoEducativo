@@ -26,6 +26,16 @@
   <div class="top-gap">
     <p>{{ offer['description'] or 'Sin descripción detallada.' }}</p>
     <p class="muted">Publicada por {{ offer['created_by_username'] or 'admin' }}{% if offer['taken_by_team_name'] %} · tomada por {{ offer['taken_by_team_name'] }}{% endif %}</p>
+    {% if current_user and current_user['role'] == 'desarrollo_team' and public_offer_streak %}
+      <div class="chip-row top-gap">
+        <span class="badge">Automáticos seguidos: {{ public_offer_streak['streak'] }}/{{ public_offer_streak['limit'] }}</span>
+        {% if public_offer_streak['blocked'] %}
+          <span class="badge warning">Bloqueado hasta activar un contrato con otro equipo</span>
+        {% elif public_offer_streak['remaining'] <= 2 %}
+          <span class="badge secondary">Te quedan {{ public_offer_streak['remaining'] }} cupos automáticos antes del bloqueo</span>
+        {% endif %}
+      </div>
+    {% endif %}
   </div>
   {% if current_user and current_user['role'] == 'desarrollo_team' and not can_take %}
     <div class="warning-box top-gap">

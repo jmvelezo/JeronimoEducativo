@@ -1,39 +1,170 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1>Panel interventor</h1>
-<div class="grid three">
-  <section class="card">
-    <h2>Ciclo activo</h2>
+<section class="interventor-hero card">
+  <div>
+    <p class="eyebrow">Centro de control</p>
+    <h1>Panel interventor</h1>
     {% if active_cycle %}
-      <div><strong>{{ active_cycle['name'] }}</strong></div>
-      <p class="muted">Podés abrir la visualización del ciclo activo para revisar equipos implicados, contratos y contexto general.</p>
-      <div class="button-row wrap top-gap">
-        <a class="btn-link secondary" href="{{ url_for('admin_cycle_detail', cycle_id=active_cycle['id']) }}">Ver ciclo activo</a>
-        <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Ver equipos</a>
-        <a class="btn-link secondary" href="{{ url_for('interventor_students') }}">Gestionar estudiantes</a>
-      </div>
+      <p class="muted">Ciclo activo: <strong>{{ active_cycle['name'] }}</strong>. Desde acá podés priorizar contratos, entregas, mensajes y vencimientos sin recorrer todo el sistema.</p>
     {% else %}
-      <p class="muted">No hay un ciclo activo en este momento.</p>
-      <div class="button-row wrap top-gap">
-        <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Ver equipos</a>
-        <a class="btn-link secondary" href="{{ url_for('interventor_students') }}">Gestionar estudiantes</a>
-      </div>
+      <p class="muted">No hay un ciclo activo en este momento. El panel queda disponible para revisar equipos, estudiantes e historial.</p>
     {% endif %}
+  </div>
+  <div class="button-row wrap">
+    {% if active_cycle %}
+      <a class="btn-link secondary" href="{{ url_for('admin_cycle_detail', cycle_id=active_cycle['id']) }}">Ver ciclo activo</a>
+    {% endif %}
+    <a class="btn-link secondary" href="{{ url_for('admin_teams') }}">Ver equipos</a>
+    <a class="btn-link secondary" href="{{ url_for('interventor_students') }}">Gestionar estudiantes</a>
+    <a class="btn-link secondary" href="{{ url_for('cycle_history') }}">Historial</a>
+    {% if active_cycle %}<a class="btn-link secondary" href="{{ url_for('admin_cycle_closing_report', cycle_id=active_cycle['id']) }}">Cierre del ciclo</a>{% endif %}
+  </div>
+</section>
+
+<section class="interventor-kpi-grid">
+  <article class="card interventor-kpi {{ 'needs-attention' if interventor_counts['total_tasks'] else '' }}">
+    <span>Tareas abiertas</span>
+    <strong>{{ interventor_counts['total_tasks'] }}</strong>
+    <small>{{ urgent_task_count }} urgentes</small>
+  </article>
+  <article class="card interventor-kpi">
+    <span>Activaciones</span>
+    <strong>{{ interventor_counts['pending_activation'] }}</strong>
+    <small>contratos por firmar</small>
+  </article>
+  <article class="card interventor-kpi">
+    <span>Entregas</span>
+    <strong>{{ interventor_counts['pending_delivery'] }}</strong>
+    <small>esperando revisión final</small>
+  </article>
+  <article class="card interventor-kpi {{ 'needs-attention' if interventor_counts['paused_contracts'] else '' }}">
+    <span>Pausados</span>
+    <strong>{{ interventor_counts['paused_contracts'] }}</strong>
+    <small>por vencimiento</small>
+  </article>
+  <article class="card interventor-kpi">
+    <span>Mensajes</span>
+    <strong>{{ interventor_counts['pending_messages_total'] }}</strong>
+    <small>solicitudes/respuestas</small>
+  </article>
+</section>
+
+<div class="grid two">
+  <section class="card" id="bandeja-interventoria">
+    <div class="section-header">
+      <div>
+        <h2>Bandeja unificada de intervención</h2>
+        <p class="muted">Ordenada por urgencia. Los botones llevan al detalle del contrato o al bloque de revisión correspondiente.</p>
+      </div>
+    </div>
+    <div class="interventor-task-list">
+      {% for task in interventor_task_queue %}
+        <article class="interventor-task {{ task['priority'] }}">
+          <div class="task-priority-dot" aria-hidden="true"></div>
+          <div>
+            <strong>{{ task['title'] }}</strong>
+            <p>{{ task['subtitle'] }}</p>
+            <small>{{ task['meta'] }}</small>
+          </div>
+          <div class="button-row wrap task-actions">
+            <a class="btn-link secondary" href="{{ task['url'] }}">Detalle</a>
+            <a class="btn-link secondary" href="#{{ task['anchor'] }}">Revisar acá</a>
+          </div>
+        </article>
+      {% else %}
+        <p class="muted">No hay tareas pendientes para interventoría.</p>
+      {% endfor %}
+    </div>
   </section>
 
   <section class="card">
-    <h2>Contratos pendientes de activación</h2>
+    <div class="section-header">
+      <div>
+        <h2>Mapa rápido del sistema</h2>
+        <p class="muted">Lectura compacta para detectar cuellos de botella sin cambiar reglas ni datos.</p>
+      </div>
+    </div>
+    <div class="interventor-mini-grid">
+      {% for row in open_contract_status_rows %}
+        <div class="interventor-mini-tile">
+          <span>{{ contract_status_label(row['status']) }}</span>
+          <strong>{{ row['total'] }}</strong>
+        </div>
+      {% else %}
+        <p class="muted">No hay contratos abiertos.</p>
+      {% endfor %}
+    </div>
+    <hr class="divider">
+    <h3>Equipos con más movimiento</h3>
+    <div class="compact-list">
+      {% for team in team_attention_rows %}
+        <article class="compact-attention-item">
+          <div>
+            <strong>{{ team['name'] }}</strong>
+            <p class="muted">{{ team['course_label'] or 'Sin curso' }} · {{ service_track_label(team['service_track']) }}</p>
+          </div>
+          <div class="chip-row">
+            <span class="badge">abiertos {{ team['open_contracts'] }}</span>
+            {% if team['waiting_deliveries'] %}<span class="badge warn">entregas {{ team['waiting_deliveries'] }}</span>{% endif %}
+            {% if team['paused_contracts'] %}<span class="badge danger">pausados {{ team['paused_contracts'] }}</span>{% endif %}
+          </div>
+        </article>
+      {% else %}
+        <p class="muted">No hay equipos con contratos abiertos.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="section-header">
+    <div>
+      <h2>Actividad reciente de interventoría</h2>
+      <p class="muted">Últimas firmas y decisiones registradas en auditoría.</p>
+    </div>
+  </div>
+  <div class="activity-timeline">
+    {% for a in recent_activity %}
+      <article class="activity-row">
+        <span class="activity-dot"></span>
+        <div>
+          <strong>{{ interventor_action_labels.get(a['action'], a['action']) }}</strong>
+          <p class="muted">{{ a['created_at'] or 'sin fecha' }} · {{ a['username'] or 'sistema' }}{% if a['entity_type'] %} · {{ a['entity_type'] }} #{{ a['entity_id'] or '—' }}{% endif %}</p>
+          {% if a['details'] %}<small>{{ a['details'] }}</small>{% endif %}
+        </div>
+      </article>
+    {% else %}
+      <p class="muted">Todavía no hay actividad reciente de interventoría.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="grid two">
+  <section class="card" id="activaciones">
+    <div class="section-header">
+      <div>
+        <h2>Contratos pendientes de activación</h2>
+        <p class="muted">La firma activa el contrato y habilita el desarrollo del servicio.</p>
+      </div>
+      <span class="badge large">{{ interventor_counts['pending_activation'] }}</span>
+    </div>
     {% for c in pending_activation %}
-      <article class="list-item">
-        <strong>Contrato #{{ c['id'] }}</strong>
+      <article class="list-item intervention-review-card">
+        <div class="review-card-head">
+          <strong>Contrato #{{ c['id'] }}</strong>
+          <span class="badge">espera {{ intervention_age_label(c['waiting_days']) }}</span>
+        </div>
         <div>{{ c['client_name'] or c['robotics_name'] }} → {{ c['provider_name'] or c['development_name'] }}</div>
         <div>Monto reservado: {{ c['reserved_amount'] }}</div>
-        {% if c['provider_service_track'] %}<div class="muted">Servicio: {{ 'Web / HTML' if c['provider_service_track'] == 'web_html' else ('Programación' if c['provider_service_track'] == 'programacion' else c['provider_service_track']) }}</div>{% endif %}
+        {% if c['provider_service_track'] %}<div class="muted">Servicio: {{ service_track_label(c['provider_service_track']) }}</div>{% endif %}
         <div>Fecha esperada de entrega: {{ c['requested_delivery_date'] or '—' }}</div>
         {% if c['request_message'] %}<p><strong>Pedido:</strong> {{ c['request_message'] }}</p>{% endif %}
         {% if c['request_stored_filename'] %}
           <p><a href="{{ url_for('download_request_file', stored_filename=c['request_stored_filename']) }}">Descargar {{ c['request_original_filename'] or 'archivo del pedido' }}</a>{% if c['request_file_size'] %} <span class="muted">({{ c['request_file_size'] }} bytes)</span>{% endif %}</p>
         {% endif %}
+        <div class="button-row wrap top-gap">
+          <a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=c['id']) }}">Abrir detalle completo</a>
+        </div>
         <form method="post" action="{{ url_for('activation_review', contract_id=c['id']) }}" class="form-grid inline-form">
           <label>Decisión
             <select name="decision">
@@ -53,12 +184,20 @@
     {% endfor %}
   </section>
 
-  <section class="card">
-    <h2>Entregas pendientes de revisión</h2>
-    <p class="muted">En contratos web, aprobar la entrega final publica la versión borrador actual de la web del equipo cliente.</p>
+  <section class="card" id="entregas">
+    <div class="section-header">
+      <div>
+        <h2>Entregas pendientes de revisión</h2>
+        <p class="muted">En contratos web, aprobar la entrega final publica la versión borrador actual de la web del equipo cliente.</p>
+      </div>
+      <span class="badge large">{{ interventor_counts['pending_delivery'] }}</span>
+    </div>
     {% for c in pending_delivery %}
-      <article class="list-item">
-        <strong>Contrato #{{ c['id'] }}</strong>
+      <article class="list-item intervention-review-card">
+        <div class="review-card-head">
+          <strong>Contrato #{{ c['id'] }}</strong>
+          <span class="badge">espera {{ intervention_age_label(c['waiting_days']) }}</span>
+        </div>
         <div>{{ c['client_name'] or c['robotics_name'] }} → {{ c['provider_name'] or c['development_name'] }}</div>
         <div class="muted">Entrega #{{ c['delivery_id'] }} · {{ c['submitted_at'] or 'sin fecha' }}</div>
         <div class="chip-row mt-8">
@@ -81,9 +220,9 @@
             <pre class="code-box">{{ c['code_text'] }}</pre>
           </details>
         {% endif %}
-        {% if c['provider_service_track'] == 'web_html' %}
-          <p><a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=c['id']) }}">Abrir detalle completo y vista previa web</a></p>
-        {% endif %}
+        <div class="button-row wrap top-gap">
+          <a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=c['id']) }}">Abrir detalle completo{% if c['provider_service_track'] == 'web_html' %} y vista previa web{% endif %}</a>
+        </div>
         <form method="post" action="{{ url_for('final_review', contract_id=c['id']) }}" class="form-grid inline-form">
           <label>Decisión
             <select name="decision">
@@ -104,15 +243,27 @@
   </section>
 </div>
 
-<section class="card">
-  <h2>Contratos pausados por vencimiento</h2>
+<section class="card" id="pausados">
+  <div class="section-header">
+    <div>
+      <h2>Contratos pausados por vencimiento</h2>
+      <p class="muted">Reactivar exige nueva fecha. Cancelar devuelve la reserva al equipo cliente.</p>
+    </div>
+    <span class="badge large {{ 'danger' if interventor_counts['paused_contracts'] else '' }}">{{ interventor_counts['paused_contracts'] }}</span>
+  </div>
   {% for c in paused_contracts %}
-    <article class="list-item">
-      <strong>Contrato #{{ c['id'] }}</strong>
+    <article class="list-item intervention-review-card paused">
+      <div class="review-card-head">
+        <strong>Contrato #{{ c['id'] }}</strong>
+        <span class="badge danger">vencido hace {{ intervention_age_label(c['waiting_days']) }}</span>
+      </div>
       <div>{{ c['client_name'] or c['robotics_name'] }} → {{ c['provider_name'] or c['development_name'] }}</div>
       <div>Fecha comprometida: {{ c['requested_delivery_date'] or '—' }}</div>
       <div class="muted">Motivo: {{ c['pause_reason'] or 'Se venció la fecha de entrega.' }}</div>
       {% if c['request_message'] %}<p><strong>Pedido:</strong> {{ c['request_message'] }}</p>{% endif %}
+      <div class="button-row wrap top-gap">
+        <a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=c['id']) }}">Abrir detalle completo</a>
+      </div>
       <div class="grid two top-gap">
         <form method="post" action="{{ url_for('deadline_reactivate', contract_id=c['id']) }}" class="form-grid inline-form">
           <label>Nueva fecha de entrega
@@ -132,4 +283,82 @@
     <p>No hay contratos pausados por vencimiento.</p>
   {% endfor %}
 </section>
+
+<div class="grid two">
+  <section class="card" id="mensajes-solicitudes">
+    <div class="section-header">
+      <div>
+        <h2>Solicitudes de información pendientes</h2>
+        <p class="muted">Aprobá solo pedidos claros y necesarios para continuar el contrato.</p>
+      </div>
+      <span class="badge large">{{ interventor_counts['pending_message_requests'] }}</span>
+    </div>
+    {% for msg in pending_message_requests %}
+      <article class="list-item intervention-review-card">
+        <div class="review-card-head">
+          <strong>Contrato #{{ msg['contract_id'] }}</strong>
+          <span class="badge">espera {{ intervention_age_label(msg['waiting_days']) }}</span>
+        </div>
+        <div>{{ msg['sender_team_name'] }} → {{ msg['recipient_team_name'] }}</div>
+        <p>{{ msg['request_text'] }}</p>
+        <div class="button-row wrap top-gap">
+          <a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=msg['contract_id']) }}">Abrir contrato</a>
+        </div>
+        <form method="post" action="{{ url_for('interventor_contract_message_request_review', message_id=msg['id']) }}" class="form-grid inline-form">
+          <label>Decisión
+            <select name="decision">
+              <option value="approved">Aprobar y enviar</option>
+              <option value="rejected">Rechazar</option>
+            </select>
+          </label>
+          <label>Comentario
+            <input type="text" name="comment" placeholder="Comentario breve para la firma de interventoría">
+          </label>
+          <button type="submit">Guardar revisión</button>
+        </form>
+      </article>
+    {% else %}
+      <p>No hay solicitudes esperando aprobación.</p>
+    {% endfor %}
+  </section>
+
+  <section class="card" id="mensajes-respuestas">
+    <div class="section-header">
+      <div>
+        <h2>Respuestas pendientes de aprobación</h2>
+        <p class="muted">La aprobación cierra el hilo y notifica al equipo que hizo la pregunta.</p>
+      </div>
+      <span class="badge large">{{ interventor_counts['pending_message_responses'] }}</span>
+    </div>
+    {% for msg in pending_message_responses %}
+      <article class="list-item intervention-review-card">
+        <div class="review-card-head">
+          <strong>Contrato #{{ msg['contract_id'] }}</strong>
+          <span class="badge">espera {{ intervention_age_label(msg['waiting_days']) }}</span>
+        </div>
+        <div>{{ msg['recipient_team_name'] }} respondió a {{ msg['sender_team_name'] }}</div>
+        <p><strong>Solicitud original:</strong> {{ msg['request_text'] }}</p>
+        <p><strong>Respuesta:</strong> {{ msg['response_text'] }}</p>
+        <div class="button-row wrap top-gap">
+          <a class="btn-link secondary" href="{{ url_for('admin_contract_detail', contract_id=msg['contract_id']) }}">Abrir contrato</a>
+        </div>
+        <form method="post" action="{{ url_for('interventor_contract_message_response_review', message_id=msg['id']) }}" class="form-grid inline-form">
+          <label>Decisión
+            <select name="decision">
+              <option value="approved">Aprobar y cerrar</option>
+              <option value="correction_required">Devolver para corregir</option>
+            </select>
+          </label>
+          <label>Comentario
+            <input type="text" name="comment" placeholder="Comentario breve para la firma de interventoría">
+          </label>
+          <button type="submit">Guardar revisión</button>
+        </form>
+      </article>
+    {% else %}
+      <p>No hay respuestas esperando aprobación.</p>
+    {% endfor %}
+  </section>
+</div>
+
 {% endblock %}

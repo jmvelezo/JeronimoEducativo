@@ -1,0 +1,68 @@
+{% if team_rule_state %}
+<section class="card rule-state-card">
+  <div class="section-header compact">
+    <div>
+      <h2>Estado de reglas del equipo</h2>
+      <p class="muted">Resumen rápido de lo que el equipo puede hacer ahora mismo sin abrir cada pantalla.</p>
+    </div>
+    <a class="btn-link secondary" href="{{ url_for('team_rules_page') }}">Ver reglas completas</a>
+  </div>
+
+  <div class="rule-state-grid">
+    <div class="rule-state-tile">
+      <span>Ciclo</span>
+      <strong>{{ team_rule_state['cycle_name'] }}</strong>
+      <small>{% if team_rule_state['in_active_cycle'] %}Equipo incluido{% else %}Sin participación activa{% endif %}</small>
+    </div>
+    <div class="rule-state-tile">
+      <span>Saldo</span>
+      <strong>{{ team_rule_state['balance'] }} JC</strong>
+      <small>Contrato base: {{ team_rule_state['contract_price'] }} JC</small>
+    </div>
+    <div class="rule-state-tile">
+      <span>Como cliente</span>
+      <strong>{{ team_rule_state['open_as_client'] }}/{{ team_rule_state['client_limit'] }}</strong>
+      <small>{{ team_rule_state['client_capacity_left'] }} lugar(es) libre(s)</small>
+    </div>
+    <div class="rule-state-tile">
+      <span>Como proveedor</span>
+      <strong>{{ team_rule_state['provider_used'] }}/{{ team_rule_state['provider_limit'] }}</strong>
+      <small>{{ team_rule_state['provider_capacity_left'] }} lugar(es) libre(s)</small>
+    </div>
+    <div class="rule-state-tile">
+      <span>Portfolios</span>
+      <strong>{{ team_rule_state['published_portfolios'] }}</strong>
+      <small>publicado(s)</small>
+    </div>
+    <div class="rule-state-tile">
+      <span>Ofertas públicas</span>
+      <strong>{% if team_rule_state['public_offer_streak'] %}{{ team_rule_state['public_offer_streak']['streak'] }}/{{ team_rule_state['public_offer_streak']['limit'] }}{% else %}—{% endif %}</strong>
+      <small>{% if team_rule_state['public_offer_streak'] %}racha automática{% else %}no aplica{% endif %}</small>
+    </div>
+  </div>
+
+  <div class="rule-permission-list top-gap">
+    {% for item in team_rule_state['permissions'] %}
+      <article class="rule-permission {% if item['allowed'] %}allowed{% else %}blocked{% endif %}">
+        <span class="rule-status-dot"></span>
+        <div>
+          <strong>{{ item['label'] }}</strong>
+          <p class="muted">{{ item['note'] }}</p>
+        </div>
+        <span class="badge {% if not item['allowed'] %}warning{% endif %}">{% if item['allowed'] %}habilitado{% else %}bloqueado{% endif %}</span>
+      </article>
+    {% endfor %}
+  </div>
+
+  {% if team_rule_state['warnings'] %}
+    <div class="warning-box top-gap">
+      <strong>Atención:</strong>
+      <ul class="simple-list mt-8">
+        {% for warning in team_rule_state['warnings'] %}
+          <li>{{ warning }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+</section>
+{% endif %}

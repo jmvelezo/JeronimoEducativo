@@ -235,6 +235,42 @@ CREATE TABLE IF NOT EXISTS deliveries (
     FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+
+CREATE TABLE IF NOT EXISTS contract_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id INTEGER NOT NULL,
+    sender_team_id INTEGER NOT NULL,
+    recipient_team_id INTEGER NOT NULL,
+    sent_by_user_id INTEGER NOT NULL,
+    response_by_user_id INTEGER,
+    request_text TEXT NOT NULL,
+    response_text TEXT,
+    status TEXT NOT NULL DEFAULT 'pending_interventor_request' CHECK(status IN ('pending_interventor_request','delivered','response_pending_interventor','closed','rejected')),
+    request_interventor_user_id INTEGER,
+    request_interventor_comment TEXT,
+    request_interventor_signed_at TEXT,
+    response_interventor_user_id INTEGER,
+    response_interventor_comment TEXT,
+    response_interventor_signed_at TEXT,
+    delivered_at TEXT,
+    response_submitted_at TEXT,
+    closed_at TEXT,
+    recipient_read_at TEXT,
+    sender_read_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_team_id) REFERENCES teams(id) ON DELETE CASCADE,
+    FOREIGN KEY (recipient_team_id) REFERENCES teams(id) ON DELETE CASCADE,
+    FOREIGN KEY (sent_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (response_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (request_interventor_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (response_interventor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_contract_messages_contract ON contract_messages(contract_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_contract_messages_recipient_status ON contract_messages(recipient_team_id, status, id DESC);
+CREATE INDEX IF NOT EXISTS idx_contract_messages_sender_status ON contract_messages(sender_team_id, status, id DESC);
+
 CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     from_wallet_id INTEGER,

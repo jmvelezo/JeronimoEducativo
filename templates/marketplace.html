@@ -95,6 +95,14 @@
     <div>
       <h2>Ofertas públicas</h2>
       <p class="muted">Estas ofertas salen desde tesorería. Los equipos proveedores compatibles pueden abrirlas, revisarlas y tomarlas si les conviene dentro de su carga de trabajo.</p>
+      {% if current_user and current_user['role'] == 'desarrollo_team' and public_offer_streak %}
+        <div class="chip-row top-gap">
+          <span class="badge">Automáticos seguidos: {{ public_offer_streak['streak'] }}/{{ public_offer_streak['limit'] }}</span>
+          {% if public_offer_streak['blocked'] %}
+            <span class="badge warning">Necesitás un contrato con otro equipo para volver a tomar ofertas públicas</span>
+          {% endif %}
+        </div>
+      {% endif %}
     </div>
     <span class="badge large">{{ admin_offers|length }} ofertas</span>
   </div>

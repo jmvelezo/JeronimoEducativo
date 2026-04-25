@@ -84,11 +84,134 @@ WEB_EDITOR_EDITABLE_STATUSES = ("active", "in_development", "correction_required
 AI_RESPONSE_MAX_CHARS = 2200
 
 OPEN_CONTRACT_STATUSES = ('pending_interventor_activation', 'active', 'in_development', 'submitted_for_review', 'correction_required')
+CONTRACT_MESSAGE_OPEN_STATES = ('pending_interventor_request', 'delivered', 'response_pending_interventor')
 CLIENT_OPEN_CONTRACT_LIMIT = 2
+AUTO_PUBLIC_OFFER_STREAK_LIMIT = 5
+
+
+
+def _db_table_exists(conn, table_name: str) -> bool:
+    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1", (table_name,)).fetchone()
+    return bool(row)
+
+
+def _db_table_columns(conn, table_name: str) -> set[str]:
+    if not _db_table_exists(conn, table_name):
+        return set()
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+
+
+def _db_add_column_if_missing(conn, table_name: str, column_name: str, column_sql: str) -> None:
+    columns = _db_table_columns(conn, table_name)
+    if column_name not in columns:
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
+
+def ensure_contract_messages_schema() -> None:
+    """Crea o migra la mensajería contractual sin romper bases previas.
+
+    Soporta base limpia, Fase 1, Fase 2 y Fase 3 parcial.
+    """
+    with get_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contract_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id INTEGER NOT NULL,
+                sender_team_id INTEGER NOT NULL,
+                recipient_team_id INTEGER NOT NULL,
+                sent_by_user_id INTEGER NOT NULL,
+                response_by_user_id INTEGER,
+                request_text TEXT NOT NULL,
+                response_text TEXT,
+                status TEXT NOT NULL DEFAULT 'pending_interventor_request',
+                request_interventor_user_id INTEGER,
+                request_interventor_comment TEXT,
+                request_interventor_signed_at TEXT,
+                response_interventor_user_id INTEGER,
+                response_interventor_comment TEXT,
+                response_interventor_signed_at TEXT,
+                delivered_at TEXT,
+                response_submitted_at TEXT,
+                closed_at TEXT,
+                recipient_read_at TEXT,
+                sender_read_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+                FOREIGN KEY (sender_team_id) REFERENCES teams(id) ON DELETE CASCADE,
+                FOREIGN KEY (recipient_team_id) REFERENCES teams(id) ON DELETE CASCADE,
+                FOREIGN KEY (sent_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (response_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+                FOREIGN KEY (request_interventor_user_id) REFERENCES users(id) ON DELETE SET NULL,
+                FOREIGN KEY (response_interventor_user_id) REFERENCES users(id) ON DELETE SET NULL
+            )
+            """
+        )
+        desired_columns = {
+            "recipient_team_id": "INTEGER",
+            "sent_by_user_id": "INTEGER",
+            "response_by_user_id": "INTEGER",
+            "response_text": "TEXT",
+            "status": "TEXT NOT NULL DEFAULT 'pending_interventor_request'",
+            "request_interventor_user_id": "INTEGER",
+            "request_interventor_comment": "TEXT",
+            "request_interventor_signed_at": "TEXT",
+            "response_interventor_user_id": "INTEGER",
+            "response_interventor_comment": "TEXT",
+            "response_interventor_signed_at": "TEXT",
+            "delivered_at": "TEXT",
+            "response_submitted_at": "TEXT",
+            "closed_at": "TEXT",
+            "recipient_read_at": "TEXT",
+            "sender_read_at": "TEXT",
+            "created_at": "TEXT",
+            "updated_at": "TEXT",
+        }
+        for column_name, column_sql in desired_columns.items():
+            _db_add_column_if_missing(conn, "contract_messages", column_name, column_sql)
+
+        columns = _db_table_columns(conn, "contract_messages")
+        if "receiver_team_id" in columns:
+            conn.execute("UPDATE contract_messages SET recipient_team_id = COALESCE(recipient_team_id, receiver_team_id) WHERE recipient_team_id IS NULL")
+        if "sender_user_id" in columns:
+            conn.execute("UPDATE contract_messages SET sent_by_user_id = COALESCE(sent_by_user_id, sender_user_id) WHERE sent_by_user_id IS NULL")
+        if "response_user_id" in columns:
+            conn.execute("UPDATE contract_messages SET response_by_user_id = COALESCE(response_by_user_id, response_user_id) WHERE response_by_user_id IS NULL")
+
+        legacy_pairs = [
+            ("interventor_request_user_id", "request_interventor_user_id"),
+            ("request_reviewed_by_user_id", "request_interventor_user_id"),
+            ("interventor_request_comment", "request_interventor_comment"),
+            ("request_review_comment", "request_interventor_comment"),
+            ("request_reviewed_at", "request_interventor_signed_at"),
+            ("interventor_response_user_id", "response_interventor_user_id"),
+            ("response_reviewed_by_user_id", "response_interventor_user_id"),
+            ("interventor_response_comment", "response_interventor_comment"),
+            ("response_review_comment", "response_interventor_comment"),
+            ("response_reviewed_at", "response_interventor_signed_at"),
+            ("recipient_seen_at", "recipient_read_at"),
+            ("receiver_seen_at", "recipient_read_at"),
+            ("sender_seen_at", "sender_read_at"),
+        ]
+        columns = _db_table_columns(conn, "contract_messages")
+        for old_col, new_col in legacy_pairs:
+            if old_col in columns and new_col in columns:
+                conn.execute(f"UPDATE contract_messages SET {new_col} = COALESCE({new_col}, {old_col}) WHERE {new_col} IS NULL")
+
+        if "status" in columns:
+            conn.execute("UPDATE contract_messages SET status = 'delivered', response_text = NULL, response_by_user_id = NULL WHERE status = 'response_rejected'")
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contract_messages_contract ON contract_messages(contract_id, id DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contract_messages_recipient_status ON contract_messages(recipient_team_id, status, id DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contract_messages_sender_status ON contract_messages(sender_team_id, status, id DESC)")
+        conn.commit()
+
 
 
 def bootstrap() -> None:
     init_db()
+    ensure_contract_messages_schema()
 
 
 bootstrap()
@@ -303,6 +426,9 @@ def restore_team_site_draft(conn, site_id: int, mode: str = "published") -> bool
 def build_team_site_preview_document(site_row, html_content: str, css_content: str) -> str:
     safe_html, safe_css = normalize_team_site_sources(site_row, html_content, css_content)
     team_name = html.escape(site_row["team_name"] if site_row and site_row["team_name"] else "Equipo")
+    fallback_html = '<section class="site-section"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'
+    preview_html = safe_html or fallback_html
+    preview_css = safe_css or ""
     return f"""<!doctype html>
 <html lang=\"es\">
 <head>
@@ -317,7 +443,7 @@ def build_team_site_preview_document(site_row, html_content: str, css_content: s
     .preview-frame {{ max-width: 1080px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 28px; background: rgba(15,23,42,0.92); box-shadow: 0 28px 60px rgba(2,8,23,0.38); overflow: hidden; }}
     .preview-banner {{ padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.92rem; color: rgba(226,232,240,0.8); background: rgba(255,255,255,0.03); }}
     .preview-content {{ padding: 22px; }}
-    {safe_css or ''}
+    {preview_css}
   </style>
 </head>
 <body>
@@ -325,15 +451,13 @@ def build_team_site_preview_document(site_row, html_content: str, css_content: s
     <div class=\"preview-frame\">
       <div class=\"preview-banner\">Vista previa de la web del equipo · No publicada todavía</div>
       <div class=\"preview-content team-site-content\">
-        {safe_html or '<section class=\"site-section\"><h2>Web en construcción</h2><p>Este espacio todavía no tiene contenido cargado.</p></section>'}
+        {preview_html}
       </div>
     </div>
   </div>
 </body>
 </html>
 """
-
-
 
 
 def build_team_site_editor_payload(site_row):
@@ -991,6 +1115,413 @@ def fetch_contract_detail_bundle(contract_id: int):
     }
 
 
+
+def contract_messages_table_ready(conn) -> bool:
+    required = {
+        "contract_id", "sender_team_id", "recipient_team_id", "sent_by_user_id",
+        "request_text", "status", "response_text", "response_by_user_id",
+        "request_interventor_user_id", "request_interventor_comment", "request_interventor_signed_at",
+        "response_interventor_user_id", "response_interventor_comment", "response_interventor_signed_at",
+        "delivered_at", "response_submitted_at", "closed_at", "recipient_read_at", "sender_read_at",
+        "created_at", "updated_at",
+    }
+    return required.issubset(_db_table_columns(conn, "contract_messages"))
+
+
+def contract_allows_messages(contract) -> bool:
+    if not contract:
+        return False
+    if contract["status"] in {"closed", "cancelled"}:
+        return False
+    if contract["paused_by_deadline"]:
+        return True
+    return contract["status"] in {"active", "in_development", "submitted_for_review", "correction_required"}
+
+
+def team_contract_message_permission(contract, team_id: int | None) -> bool:
+    if not team_id or not contract_allows_messages(contract):
+        return False
+    return team_id in {contract_client_team_id(contract), contract_provider_team_id(contract)}
+
+
+def other_contract_team_id(contract, team_id: int | None) -> int | None:
+    if not team_id:
+        return None
+    client_id = contract_client_team_id(contract)
+    provider_id = contract_provider_team_id(contract)
+    if team_id == client_id:
+        return provider_id
+    if team_id == provider_id:
+        return client_id
+    return None
+
+
+def has_open_contract_message_direction(conn, contract_id: int, sender_team_id: int, recipient_team_id: int) -> bool:
+    if not contract_messages_table_ready(conn):
+        return False
+    placeholders = ",".join(["?"] * len(CONTRACT_MESSAGE_OPEN_STATES))
+    row = conn.execute(
+        f"""
+        SELECT 1
+        FROM contract_messages
+        WHERE contract_id = ?
+          AND sender_team_id = ?
+          AND recipient_team_id = ?
+          AND status IN ({placeholders})
+        LIMIT 1
+        """,
+        (contract_id, sender_team_id, recipient_team_id, *CONTRACT_MESSAGE_OPEN_STATES),
+    ).fetchone()
+    return bool(row)
+
+
+def fetch_contract_messages(conn, contract_id: int):
+    if not contract_messages_table_ready(conn):
+        return []
+    return conn.execute(
+        """
+        SELECT cm.*, 
+               st.name AS sender_team_name,
+               rt.name AS recipient_team_name,
+               su.username AS sent_by_username,
+               ru.username AS response_by_username,
+               iqu.username AS request_interventor_username,
+               iru.username AS response_interventor_username
+        FROM contract_messages cm
+        JOIN teams st ON st.id = cm.sender_team_id
+        JOIN teams rt ON rt.id = cm.recipient_team_id
+        LEFT JOIN users su ON su.id = cm.sent_by_user_id
+        LEFT JOIN users ru ON ru.id = cm.response_by_user_id
+        LEFT JOIN users iqu ON iqu.id = cm.request_interventor_user_id
+        LEFT JOIN users iru ON iru.id = cm.response_interventor_user_id
+        WHERE cm.contract_id = ?
+        ORDER BY cm.id DESC
+        """,
+        (contract_id,),
+    ).fetchall()
+
+
+def mark_contract_messages_as_read(team_id: int, contract_id: int) -> None:
+    with get_connection() as conn:
+        if not contract_messages_table_ready(conn):
+            return
+        conn.execute(
+            "UPDATE contract_messages SET recipient_read_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE contract_id = ? AND recipient_team_id = ? AND status = 'delivered' AND recipient_read_at IS NULL",
+            (contract_id, team_id),
+        )
+        conn.execute(
+            "UPDATE contract_messages SET sender_read_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE contract_id = ? AND sender_team_id = ? AND status IN ('closed', 'rejected') AND sender_read_at IS NULL",
+            (contract_id, team_id),
+        )
+        conn.commit()
+
+
+def build_team_message_notifications(conn, team_id: int, *, limit: int = 6):
+    empty = {'unread_incoming': 0, 'awaiting_response': 0, 'awaiting_interventor': 0, 'badge_total': 0, 'recent_items': []}
+    if not team_id or not contract_messages_table_ready(conn):
+        return empty
+    rows = conn.execute(
+        """
+        SELECT cm.*, c.status AS contract_status, c.paused_by_deadline,
+               st.name AS sender_team_name,
+               rt.name AS recipient_team_name
+        FROM contract_messages cm
+        JOIN contracts c ON c.id = cm.contract_id
+        JOIN teams st ON st.id = cm.sender_team_id
+        JOIN teams rt ON rt.id = cm.recipient_team_id
+        WHERE cm.sender_team_id = ? OR cm.recipient_team_id = ?
+        ORDER BY COALESCE(cm.updated_at, cm.created_at) DESC, cm.id DESC
+        LIMIT ?
+        """,
+        (team_id, team_id, limit),
+    ).fetchall()
+    unread_incoming = 0
+    awaiting_response = 0
+    awaiting_interventor = 0
+    recent_items = []
+    for row in rows:
+        label = "Mensaje"
+        muted = f"Contrato #{row['contract_id']}"
+        if row["recipient_team_id"] == team_id and row["status"] == "delivered":
+            if not row["recipient_read_at"]:
+                unread_incoming += 1
+            awaiting_response += 1
+            label = "Solicitud recibida"
+            muted = f"{row['sender_team_name']} pidió más información · contrato #{row['contract_id']}"
+        elif row["sender_team_id"] == team_id and row["status"] == "pending_interventor_request":
+            awaiting_interventor += 1
+            label = "Solicitud en revisión"
+            muted = f"Tu pedido espera aprobación · contrato #{row['contract_id']}"
+        elif row["recipient_team_id"] == team_id and row["status"] == "response_pending_interventor":
+            awaiting_interventor += 1
+            label = "Respuesta en revisión"
+            muted = f"Tu respuesta espera aprobación · contrato #{row['contract_id']}"
+        elif row["sender_team_id"] == team_id and row["status"] == "closed":
+            if not row["sender_read_at"]:
+                unread_incoming += 1
+            label = "Respuesta aprobada"
+            muted = f"{row['recipient_team_name']} respondió · contrato #{row['contract_id']}"
+        elif row["sender_team_id"] == team_id and row["status"] == "rejected":
+            if not row["sender_read_at"]:
+                unread_incoming += 1
+            label = "Solicitud rechazada"
+            muted = f"Interventoría rechazó tu solicitud · contrato #{row['contract_id']}"
+        recent_items.append({'id': row['id'], 'contract_id': row['contract_id'], 'label': label, 'muted': muted, 'status': row['status']})
+    return {'unread_incoming': unread_incoming, 'awaiting_response': awaiting_response, 'awaiting_interventor': awaiting_interventor, 'badge_total': unread_incoming + awaiting_interventor, 'recent_items': recent_items}
+
+
+def build_public_message_alert_map(conn, team_ids: list[int]) -> dict[int, int]:
+    if not team_ids or not contract_messages_table_ready(conn):
+        return {}
+    placeholders = ",".join("?" for _ in team_ids)
+    query = f"""
+        SELECT team_id, SUM(alert_count) AS total_alerts
+        FROM (
+            SELECT recipient_team_id AS team_id, COUNT(*) AS alert_count
+            FROM contract_messages
+            WHERE status = 'delivered'
+              AND recipient_read_at IS NULL
+              AND recipient_team_id IN ({placeholders})
+            GROUP BY recipient_team_id
+
+            UNION ALL
+
+            SELECT sender_team_id AS team_id, COUNT(*) AS alert_count
+            FROM contract_messages
+            WHERE status IN ('closed', 'rejected')
+              AND sender_read_at IS NULL
+              AND sender_team_id IN ({placeholders})
+            GROUP BY sender_team_id
+        ) grouped_alerts
+        GROUP BY team_id
+    """
+    rows = conn.execute(query, tuple(team_ids) * 2).fetchall()
+    return {row["team_id"]: int(row["total_alerts"] or 0) for row in rows}
+
+
+def public_offer_streak_info(conn, team_id: int, limit: int = AUTO_PUBLIC_OFFER_STREAK_LIMIT) -> dict:
+    auto_events = conn.execute(
+        """
+        SELECT MAX(al.created_at) AS event_at, 'admin_offer' AS event_type, ao.id AS source_id, ao.title AS label
+        FROM audit_log al
+        JOIN admin_offers ao ON ao.id = al.entity_id
+        WHERE al.action = 'take_admin_offer'
+          AND al.entity_type = 'admin_offer'
+          AND ao.taken_by_team_id = ?
+        GROUP BY ao.id, ao.title
+        """,
+        (team_id,),
+    ).fetchall()
+    team_contract_events = conn.execute(
+        """
+        SELECT c.activated_at AS event_at, 'team_contract' AS event_type, c.id AS source_id,
+               CASE
+                 WHEN COALESCE(c.provider_team_id, c.development_team_id) = ? THEN 'Contrato normal activado como proveedor'
+                 ELSE 'Contrato normal activado con otro equipo'
+               END AS label
+        FROM contracts c
+        WHERE c.contract_origin = 'team_request'
+          AND c.activated_at IS NOT NULL
+          AND c.status IN ('active', 'in_development', 'submitted_for_review', 'correction_required', 'validated', 'closed')
+          AND (COALESCE(c.client_team_id, c.robotics_team_id) = ? OR COALESCE(c.provider_team_id, c.development_team_id) = ?)
+        """,
+        (team_id, team_id, team_id),
+    ).fetchall()
+    events = []
+    for row in auto_events:
+        if row['event_at']:
+            events.append({
+                'event_at': row['event_at'],
+                'event_type': row['event_type'],
+                'source_id': row['source_id'],
+                'label': row['label'],
+            })
+    for row in team_contract_events:
+        if row['event_at']:
+            events.append({
+                'event_at': row['event_at'],
+                'event_type': row['event_type'],
+                'source_id': row['source_id'],
+                'label': row['label'],
+            })
+    events.sort(key=lambda item: item['event_at'] or '', reverse=True)
+    streak = 0
+    reset_event = None
+    recent_auto_events = []
+    for event in events:
+        if event['event_type'] == 'admin_offer':
+            streak += 1
+            if len(recent_auto_events) < limit:
+                recent_auto_events.append(event)
+            continue
+        reset_event = event
+        break
+    blocked = streak >= limit
+    return {
+        'streak': streak,
+        'limit': limit,
+        'blocked': blocked,
+        'remaining': max(limit - streak, 0),
+        'reset_event': reset_event,
+        'recent_auto_events': recent_auto_events,
+        'note': (
+            f"Tu equipo ya tomó {limit} ofertas públicas seguidas. Para tomar otra automática primero necesita activar al menos un contrato normal con otro equipo."
+            if blocked else
+            f"Racha actual de ofertas públicas seguidas: {streak}/{limit}."
+        ),
+    }
+
+
+def build_team_rule_state(conn, team, active_cycle=None) -> dict:
+    """Resumen operativo de reglas sin modificar la economía ni los contratos.
+
+    Esta función centraliza avisos para las pantallas de equipo. No decide nada por sí sola:
+    las validaciones reales siguen estando en las rutas de contratación, toma de ofertas y revisión.
+    """
+    if not team:
+        return {}
+    settings = conn.execute("SELECT * FROM economic_settings ORDER BY effective_from DESC, id DESC LIMIT 1").fetchone()
+    wallet = conn.execute("SELECT * FROM wallets WHERE owner_type = 'team' AND owner_id = ?", (team["id"],)).fetchone()
+    cycle = active_cycle if active_cycle is not None else get_active_cycle(conn)
+    cycle_id = cycle["id"] if cycle else None
+    in_active_cycle = bool(cycle and cycle_has_team(conn, cycle["id"], team["id"]))
+    contract_price = settings["contract_price"] if settings else 30
+    balance = wallet["balance"] if wallet else 0
+    open_as_client = count_open_client_contracts(conn, team["id"], cycle_id) if cycle_id else count_open_client_contracts(conn, team["id"])
+    open_as_provider = count_open_provider_contracts(conn, team["id"], cycle_id) if cycle_id else count_open_provider_contracts(conn, team["id"])
+    taken_public_offers = conn.execute(
+        "SELECT COUNT(*) AS total FROM admin_offers WHERE taken_by_team_id = ? AND status = 'taken'",
+        (team["id"],),
+    ).fetchone()["total"]
+    provider_limit = int(team["max_contracts"] or 0)
+    provider_used = open_as_provider + taken_public_offers
+    provider_capacity_left = max(provider_limit - provider_used, 0)
+    published_portfolios = conn.execute(
+        "SELECT COUNT(*) AS total FROM portfolios WHERE team_id = ? AND status = 'published'",
+        (team["id"],),
+    ).fetchone()["total"]
+    pending_activation = conn.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM contracts
+        WHERE status = 'pending_interventor_activation'
+          AND (COALESCE(client_team_id, robotics_team_id) = ? OR COALESCE(provider_team_id, development_team_id) = ?)
+        """,
+        (team["id"], team["id"]),
+    ).fetchone()["total"]
+    paused_contracts = conn.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM contracts
+        WHERE paused_by_deadline = 1
+          AND (COALESCE(client_team_id, robotics_team_id) = ? OR COALESCE(provider_team_id, development_team_id) = ?)
+        """,
+        (team["id"], team["id"]),
+    ).fetchone()["total"]
+    public_offer_streak = public_offer_streak_info(conn, team["id"]) if team["team_type"] == "desarrollo" else None
+    open_offers = market_offer_rows(conn, active_cycle=cycle) if team["team_type"] == "desarrollo" else []
+    compatible_open_offers = [offer for offer in open_offers if offer["status"] == "open" and team_can_take_offer(team, offer)]
+
+    client_allowed = True
+    client_note = "Puede solicitar contratos normales desde la Bolsa Digital."
+    if not team["active"]:
+        client_allowed = False
+        client_note = "El equipo está inactivo."
+    elif not cycle:
+        client_allowed = False
+        client_note = "No hay ciclo activo."
+    elif not in_active_cycle:
+        client_allowed = False
+        client_note = "El equipo no está incluido en el ciclo activo."
+    elif open_as_client >= CLIENT_OPEN_CONTRACT_LIMIT:
+        client_allowed = False
+        client_note = f"Ya tiene {CLIENT_OPEN_CONTRACT_LIMIT} contratos abiertos como cliente."
+    elif balance < contract_price:
+        client_allowed = False
+        client_note = f"Saldo insuficiente para reservar {contract_price} JeroCoin."
+    elif team["team_type"] == "desarrollo" and (team["service_track"] or "programacion") != "programacion":
+        client_allowed = False
+        client_note = "Los equipos web / HTML funcionan como proveedores en esta etapa."
+
+    provider_allowed = False
+    provider_note = "Este equipo no funciona como proveedor de servicios en esta etapa."
+    if team["team_type"] == "desarrollo":
+        provider_allowed = True
+        provider_note = "Puede recibir contratos normales si tiene portfolio publicado y capacidad."
+        if not team["active"]:
+            provider_allowed = False
+            provider_note = "El equipo está inactivo."
+        elif not cycle:
+            provider_allowed = False
+            provider_note = "No hay ciclo activo."
+        elif not in_active_cycle:
+            provider_allowed = False
+            provider_note = "El equipo no está incluido en el ciclo activo."
+        elif provider_capacity_left <= 0:
+            provider_allowed = False
+            provider_note = "Alcanzó su carga máxima entre contratos y ofertas tomadas."
+        elif published_portfolios <= 0:
+            provider_allowed = False
+            provider_note = "Necesita al menos un portfolio publicado para recibir contratos normales."
+
+    public_offer_allowed = False
+    public_offer_note = "Solo los equipos de desarrollo pueden tomar ofertas públicas."
+    if team["team_type"] == "desarrollo":
+        public_offer_allowed = True
+        public_offer_note = "Puede tomar ofertas públicas compatibles con su línea de servicio."
+        if not team["active"]:
+            public_offer_allowed = False
+            public_offer_note = "El equipo está inactivo."
+        elif not cycle:
+            public_offer_allowed = False
+            public_offer_note = "No hay ciclo activo."
+        elif not in_active_cycle:
+            public_offer_allowed = False
+            public_offer_note = "El equipo no está incluido en el ciclo activo."
+        elif provider_capacity_left <= 0:
+            public_offer_allowed = False
+            public_offer_note = "No tiene capacidad libre para tomar otra oferta."
+        elif public_offer_streak and public_offer_streak["blocked"]:
+            public_offer_allowed = False
+            public_offer_note = public_offer_streak["note"]
+        elif not compatible_open_offers:
+            public_offer_note = "Puede tomar ofertas, pero ahora no hay ofertas abiertas compatibles."
+
+    warnings = []
+    if pending_activation:
+        warnings.append(f"Tiene {pending_activation} contrato(s) esperando validación de interventoría.")
+    if paused_contracts:
+        warnings.append(f"Tiene {paused_contracts} contrato(s) pausado(s) por fecha vencida.")
+    if public_offer_streak and public_offer_streak["blocked"]:
+        warnings.append(public_offer_streak["note"])
+
+    return {
+        "cycle_name": cycle["name"] if cycle else "Sin ciclo activo",
+        "in_active_cycle": in_active_cycle,
+        "contract_price": contract_price,
+        "balance": balance,
+        "open_as_client": open_as_client,
+        "client_limit": CLIENT_OPEN_CONTRACT_LIMIT,
+        "client_capacity_left": max(CLIENT_OPEN_CONTRACT_LIMIT - open_as_client, 0),
+        "open_as_provider": open_as_provider,
+        "taken_public_offers": taken_public_offers,
+        "provider_limit": provider_limit,
+        "provider_used": provider_used,
+        "provider_capacity_left": provider_capacity_left,
+        "published_portfolios": published_portfolios,
+        "compatible_open_offers": len(compatible_open_offers),
+        "pending_activation": pending_activation,
+        "paused_contracts": paused_contracts,
+        "public_offer_streak": public_offer_streak,
+        "permissions": [
+            {"label": "Solicitar contrato normal", "allowed": client_allowed, "note": client_note},
+            {"label": "Recibir contratos como proveedor", "allowed": provider_allowed, "note": provider_note},
+            {"label": "Tomar ofertas públicas", "allowed": public_offer_allowed, "note": public_offer_note},
+        ],
+        "warnings": warnings,
+    }
+
+
 def fetch_ai_messages_map(conn, contract_ids: list[int]) -> dict[int, list]:
     message_map: dict[int, list] = defaultdict(list)
     if not contract_ids:
@@ -1611,6 +2142,372 @@ def compute_team_scores(conn, team_rows):
     return score_map
 
 
+
+# Fase 9 · Cierre de ciclo e historial
+
+def manual_adjustments_by_team_for_cycle(conn, cycle_id: int | None = None):
+    if cycle_id is None:
+        return manual_adjustments_by_team(conn)
+    rows = conn.execute(
+        """
+        SELECT team_id, COALESCE(SUM(points_delta), 0) AS total
+        FROM team_point_adjustments
+        WHERE cycle_id = ?
+        GROUP BY team_id
+        """,
+        (cycle_id,),
+    ).fetchall()
+    return {row["team_id"]: int(row["total"] or 0) for row in rows}
+
+
+def compute_team_scores_for_cycle(conn, team_rows, cycle_id: int | None = None):
+    """Calcula un ranking de cierre sin modificar la fórmula pública existente.
+
+    Si hay ciclo seleccionado, los contratos/revisiones/ajustes se recortan a ese ciclo.
+    El saldo de billetera se toma como foto actual, igual que en el ranking general.
+    """
+    team_ids = [row["id"] for row in team_rows]
+    score_map = {}
+    if not team_ids:
+        return score_map
+
+    cycle_filter = ""
+    params: list = []
+    if cycle_id is not None:
+        cycle_filter = " AND cycle_id = ?"
+        params.append(cycle_id)
+
+    successful_contracts = conn.execute(
+        f"""
+        SELECT id,
+               COALESCE(client_team_id, robotics_team_id) AS client_team_id,
+               COALESCE(provider_team_id, development_team_id) AS provider_team_id,
+               requested_amount,
+               provider_service_track,
+               web_request_kind,
+               contract_origin
+        FROM contracts
+        WHERE status = 'closed' AND payment_released = 1{cycle_filter}
+        """,
+        tuple(params),
+    ).fetchall()
+    successful_count = defaultdict(int)
+    client_invested = defaultdict(int)
+    web_create_count = defaultdict(int)
+    web_modify_count = defaultdict(int)
+    admin_offer_success_count = defaultdict(int)
+    delivered_amount = defaultdict(int)
+    for contract in successful_contracts:
+        for team_id in (contract["client_team_id"], contract["provider_team_id"]):
+            if team_id:
+                successful_count[team_id] += 1
+                delivered_amount[team_id] += int(contract["requested_amount"] or 0)
+                if contract["contract_origin"] == "admin_offer":
+                    admin_offer_success_count[team_id] += 1
+        client_invested[contract["client_team_id"]] += int(contract["requested_amount"] or 0)
+        if contract["provider_service_track"] == "web_html":
+            if contract["web_request_kind"] == "create":
+                for team_id in (contract["client_team_id"], contract["provider_team_id"]):
+                    if team_id:
+                        web_create_count[team_id] += 1
+            elif contract["web_request_kind"] == "modify":
+                for team_id in (contract["client_team_id"], contract["provider_team_id"]):
+                    if team_id:
+                        web_modify_count[team_id] += 1
+
+    review_params = []
+    review_filter = ""
+    if cycle_id is not None:
+        review_filter = " AND c.cycle_id = ?"
+        review_params.append(cycle_id)
+    return_reviews = conn.execute(
+        f"""
+        SELECT DISTINCT cr.id,
+               COALESCE(c.client_team_id, c.robotics_team_id) AS client_team_id,
+               COALESCE(c.provider_team_id, c.development_team_id) AS provider_team_id
+        FROM contract_reviews cr
+        JOIN contracts c ON c.id = cr.contract_id
+        WHERE cr.review_stage = 'final_delivery' AND cr.decision = 'correction_required'{review_filter}
+        """,
+        tuple(review_params),
+    ).fetchall()
+    return_count = defaultdict(int)
+    for review in return_reviews:
+        return_count[review["client_team_id"]] += 1
+        return_count[review["provider_team_id"]] += 1
+
+    cancelled_contracts = conn.execute(
+        f"""
+        SELECT DISTINCT id,
+               COALESCE(client_team_id, robotics_team_id) AS client_team_id,
+               COALESCE(provider_team_id, development_team_id) AS provider_team_id
+        FROM contracts
+        WHERE status = 'cancelled'{cycle_filter}
+        """,
+        tuple(params),
+    ).fetchall()
+    cancellation_count = defaultdict(int)
+    for contract in cancelled_contracts:
+        cancellation_count[contract["client_team_id"]] += 1
+        cancellation_count[contract["provider_team_id"]] += 1
+
+    manual_points = manual_adjustments_by_team_for_cycle(conn, cycle_id)
+    for row in team_rows:
+        row_data = dict(row)
+        team_id = row_data["id"]
+        team_type = row_data.get("team_type")
+        wallet_balance = row_data.get("wallet_balance")
+        if wallet_balance is None:
+            wallet_row = conn.execute(
+                "SELECT COALESCE(balance, 0) AS wallet_balance FROM wallets WHERE owner_type = 'team' AND owner_id = ? LIMIT 1",
+                (team_id,),
+            ).fetchone()
+            wallet_balance = wallet_row["wallet_balance"] if wallet_row else 0
+        base_points = panchicoin_points(wallet_balance)
+        invested_points = panchicoin_points(client_invested[team_id]) if team_type == "robotica" else 0
+        success_bonus = successful_count[team_id] * SUCCESS_PROJECT_BONUS
+        create_bonus = web_create_count[team_id] * WEB_CREATE_BONUS
+        modify_bonus = web_modify_count[team_id] * WEB_MODIFY_BONUS
+        returns_penalty = return_count[team_id] * RETURN_PENALTY
+        cancellations_penalty = cancellation_count[team_id] * CANCELLATION_PENALTY
+        manual_adjustment_points = int(manual_points.get(team_id, 0))
+        total = max(0, base_points + invested_points + success_bonus + create_bonus + modify_bonus + manual_adjustment_points - returns_penalty - cancellations_penalty)
+        score_map[team_id] = {
+            "score": total,
+            "base_points": base_points,
+            "invested_points": invested_points,
+            "success_count": successful_count[team_id],
+            "success_bonus": success_bonus,
+            "return_count": return_count[team_id],
+            "return_penalty": returns_penalty,
+            "cancellation_count": cancellation_count[team_id],
+            "cancellation_penalty": cancellations_penalty,
+            "web_create_count": web_create_count[team_id],
+            "web_create_bonus": create_bonus,
+            "web_modify_count": web_modify_count[team_id],
+            "web_modify_bonus": modify_bonus,
+            "manual_adjustment_points": manual_adjustment_points,
+            "delivered_amount": delivered_amount[team_id],
+            "client_invested": client_invested[team_id],
+            "admin_offer_success_count": admin_offer_success_count[team_id],
+        }
+    return score_map
+
+
+def cycle_list_for_history(conn):
+    return conn.execute(
+        """
+        SELECT c.*,
+               COALESCE((SELECT COUNT(*) FROM cycle_teams ct WHERE ct.cycle_id = c.id), 0) AS team_count,
+               COALESCE((SELECT COUNT(*) FROM contracts k WHERE k.cycle_id = c.id), 0) AS contract_count,
+               COALESCE((SELECT COUNT(*) FROM contracts k WHERE k.cycle_id = c.id AND k.status = 'closed' AND k.payment_released = 1), 0) AS closed_contract_count,
+               COALESCE((SELECT COUNT(*) FROM contracts k WHERE k.cycle_id = c.id AND k.status NOT IN ('closed','cancelled')), 0) AS open_contract_count
+        FROM cycles c
+        ORDER BY c.id DESC
+        """
+    ).fetchall()
+
+
+def select_cycle_for_history(conn, cycle_id: int | None = None):
+    if cycle_id:
+        return conn.execute("SELECT * FROM cycles WHERE id = ?", (cycle_id,)).fetchone()
+    return get_active_cycle(conn) or conn.execute("SELECT * FROM cycles ORDER BY id DESC LIMIT 1").fetchone()
+
+
+def cycle_report_team_rows(conn, cycle_id: int | None = None):
+    sql = """
+        SELECT t.id, t.name, t.team_type, t.service_track, t.active, t.course_label, t.profile_blurb,
+               COALESCE(w.balance, 0) AS wallet_balance,
+               COUNT(DISTINCT CASE WHEN tm.active = 1 AND s.active = 1 THEN tm.id END) AS member_count,
+               COALESCE(NULLIF(t.course_label, ''), (
+                   SELECT s2.course
+                   FROM team_members tm2
+                   JOIN students s2 ON s2.id = tm2.student_id
+                   WHERE tm2.team_id = t.id AND tm2.active = 1 AND s2.active = 1
+                   ORDER BY s2.course, tm2.id
+                   LIMIT 1
+               ), 'Sin curso') AS course_label_resolved
+        FROM teams t
+    """
+    params: list = []
+    if cycle_id is not None:
+        sql += " JOIN cycle_teams ct ON ct.team_id = t.id AND ct.cycle_id = ?"
+        params.append(cycle_id)
+    sql += """
+        LEFT JOIN wallets w ON w.owner_type = 'team' AND w.owner_id = t.id
+        LEFT JOIN team_members tm ON tm.team_id = t.id
+        LEFT JOIN students s ON s.id = tm.student_id
+        WHERE t.active = 1
+        GROUP BY t.id, w.balance
+        ORDER BY course_label_resolved, t.team_type, t.name
+    """
+    return conn.execute(sql, tuple(params)).fetchall()
+
+
+def course_sort_key_for_history(label: str):
+    match = re.match(r"(\d+)", label or "")
+    if match:
+        return (0, int(match.group(1)), label)
+    return (1, 999, label or "Sin curso")
+
+
+def contract_status_summary_for_cycle(conn, cycle_id: int | None = None):
+    sql = "SELECT status, COUNT(*) AS total FROM contracts"
+    params: list = []
+    if cycle_id is not None:
+        sql += " WHERE cycle_id = ?"
+        params.append(cycle_id)
+    sql += " GROUP BY status ORDER BY total DESC, status"
+    return conn.execute(sql, tuple(params)).fetchall()
+
+
+def contract_origin_summary_for_cycle(conn, cycle_id: int | None = None):
+    sql = "SELECT contract_origin, COUNT(*) AS total FROM contracts"
+    params: list = []
+    if cycle_id is not None:
+        sql += " WHERE cycle_id = ?"
+        params.append(cycle_id)
+    sql += " GROUP BY contract_origin ORDER BY total DESC, contract_origin"
+    return conn.execute(sql, tuple(params)).fetchall()
+
+
+def history_contract_rows(conn, cycle_id: int | None = None):
+    sql = """
+        SELECT c.id, c.status, c.contract_origin, c.requested_amount, c.reserved_amount, c.payment_released,
+               c.created_at, c.activated_at, c.closed_at, c.requested_delivery_date,
+               rt.name AS client_name, dt.name AS provider_name,
+               rt.team_type AS client_team_type, dt.team_type AS provider_team_type,
+               dt.service_track AS provider_service_track,
+               COALESCE((SELECT COUNT(*) FROM deliveries d WHERE d.contract_id = c.id), 0) AS delivery_count,
+               COALESCE((SELECT COUNT(*) FROM contract_reviews cr WHERE cr.contract_id = c.id), 0) AS review_count
+        FROM contracts c
+        JOIN teams rt ON rt.id = COALESCE(c.client_team_id, c.robotics_team_id)
+        JOIN teams dt ON dt.id = COALESCE(c.provider_team_id, c.development_team_id)
+    """
+    params: list = []
+    if cycle_id is not None:
+        sql += " WHERE c.cycle_id = ?"
+        params.append(cycle_id)
+    sql += " ORDER BY c.id DESC LIMIT 120"
+    return conn.execute(sql, tuple(params)).fetchall()
+
+
+def history_recent_activity(conn, cycle_id: int | None = None):
+    params: list = []
+    sql = """
+        SELECT al.*, u.username,
+               c.id AS contract_id,
+               rt.name AS client_name,
+               dt.name AS provider_name
+        FROM audit_log al
+        LEFT JOIN users u ON u.id = al.user_id
+        LEFT JOIN contracts c ON al.entity_type = 'contract' AND c.id = al.entity_id
+        LEFT JOIN teams rt ON rt.id = COALESCE(c.client_team_id, c.robotics_team_id)
+        LEFT JOIN teams dt ON dt.id = COALESCE(c.provider_team_id, c.development_team_id)
+    """
+    if cycle_id is not None:
+        sql += " WHERE c.cycle_id = ? OR (al.entity_type IN ('cycle', 'cycles') AND al.entity_id = ?)"
+        params.extend([cycle_id, cycle_id])
+    sql += " ORDER BY al.id DESC LIMIT 20"
+    return conn.execute(sql, tuple(params)).fetchall()
+
+
+def history_message_stats(conn, cycle_id: int | None = None):
+    if not contract_messages_table_ready(conn):
+        return {"total": 0, "pending": 0, "closed": 0, "rejected": 0}
+    params: list = []
+    sql = """
+        SELECT cm.status, COUNT(*) AS total
+        FROM contract_messages cm
+        JOIN contracts c ON c.id = cm.contract_id
+    """
+    if cycle_id is not None:
+        sql += " WHERE c.cycle_id = ?"
+        params.append(cycle_id)
+    sql += " GROUP BY cm.status"
+    rows = conn.execute(sql, tuple(params)).fetchall()
+    values = {row["status"]: int(row["total"] or 0) for row in rows}
+    return {
+        "total": sum(values.values()),
+        "pending": values.get("pending_interventor_request", 0) + values.get("response_pending_interventor", 0) + values.get("delivered", 0),
+        "closed": values.get("closed", 0),
+        "rejected": values.get("rejected", 0),
+    }
+
+
+def build_cycle_history_context(conn, cycle_id: int | None = None):
+    cycles = cycle_list_for_history(conn)
+    selected_cycle = select_cycle_for_history(conn, cycle_id)
+    selected_cycle_id = selected_cycle["id"] if selected_cycle else None
+    teams = cycle_report_team_rows(conn, selected_cycle_id)
+    score_map = compute_team_scores_for_cycle(conn, teams, selected_cycle_id)
+
+    ranking = []
+    for row in teams:
+        item = dict(row)
+        item["course_label"] = item.get("course_label_resolved") or item.get("course_label") or "Sin curso"
+        item.update(score_map.get(item["id"], empty_score_summary()))
+        ranking.append(item)
+    ranking.sort(key=lambda item: (-item.get("score", 0), item["name"].lower()))
+    for idx, item in enumerate(ranking, start=1):
+        item["rank"] = idx
+
+    teams_by_course = defaultdict(list)
+    for item in ranking:
+        teams_by_course[item["course_label"]].append(item)
+    course_sections = []
+    for course_label in sorted(teams_by_course.keys(), key=course_sort_key_for_history):
+        course_ranking = sorted(teams_by_course[course_label], key=lambda item: (-item.get("score", 0), item["name"].lower()))
+        for idx, item in enumerate(course_ranking, start=1):
+            item["local_rank"] = idx
+        course_sections.append({"course_label": course_label, "ranking": course_ranking})
+
+    top_score = ranking[0] if ranking else None
+    top_success = max(ranking, key=lambda item: (item.get("success_count", 0), item.get("delivered_amount", 0), item.get("score", 0))) if ranking else None
+    top_investment = max(ranking, key=lambda item: (item.get("client_invested", 0), item.get("score", 0))) if ranking else None
+    top_web = max(ranking, key=lambda item: (item.get("web_create_count", 0) + item.get("web_modify_count", 0), item.get("score", 0))) if ranking else None
+    highlights = {
+        "top_score": top_score,
+        "top_success": top_success if top_success and top_success.get("success_count", 0) else None,
+        "top_investment": top_investment if top_investment and top_investment.get("client_invested", 0) else None,
+        "top_web": top_web if top_web and (top_web.get("web_create_count", 0) + top_web.get("web_modify_count", 0)) else None,
+    }
+
+    contract_rows = history_contract_rows(conn, selected_cycle_id)
+    status_summary = contract_status_summary_for_cycle(conn, selected_cycle_id)
+    origin_summary = contract_origin_summary_for_cycle(conn, selected_cycle_id)
+    message_stats = history_message_stats(conn, selected_cycle_id)
+    recent_activity = history_recent_activity(conn, selected_cycle_id)
+    closed_contracts = [row for row in contract_rows if row["status"] == "closed" and row["payment_released"]]
+    cancelled_contracts = [row for row in contract_rows if row["status"] == "cancelled"]
+    open_contracts = [row for row in contract_rows if row["status"] not in {"closed", "cancelled"}]
+    total_released = sum(int(row["requested_amount"] or 0) for row in closed_contracts)
+
+    return {
+        "cycles": cycles,
+        "selected_cycle": selected_cycle,
+        "selected_cycle_id": selected_cycle_id,
+        "cycle_state": cycle_state_label(selected_cycle) if selected_cycle else "sin ciclo",
+        "ranking": ranking,
+        "course_sections": course_sections,
+        "highlights": highlights,
+        "contract_rows": contract_rows,
+        "status_summary": status_summary,
+        "origin_summary": origin_summary,
+        "message_stats": message_stats,
+        "recent_activity": recent_activity,
+        "closed_contract_count": len(closed_contracts),
+        "cancelled_contract_count": len(cancelled_contracts),
+        "open_contract_count": len(open_contracts),
+        "total_released": total_released,
+        "team_count": len(ranking),
+        "points_rule": build_points_rule_text(),
+        "contract_status_label": contract_status_label,
+        "service_track_label": service_track_label,
+        "format_display_date": format_display_date,
+        "is_print_view": request.args.get("print") == "1",
+    }
+
 def build_public_home_context():
 
     with get_connection() as conn:
@@ -1643,12 +2540,15 @@ def build_public_home_context():
         ).fetchall()
         score_map = compute_team_scores(conn, teams)
         featured_team = compute_featured_team(conn, teams, score_map)
+        message_alert_map = build_public_message_alert_map(conn, [row["id"] for row in teams])
 
     teams_by_course = defaultdict(list)
     ranking = []
     for row in teams:
         item = dict(row)
-        item.update(score_map.get(item["id"], {"score": 0, "base_points": 0, "invested_points": 0, "success_count": 0, "success_bonus": 0, "return_count": 0, "return_penalty": 0, "cancellation_count": 0, "cancellation_penalty": 0}))
+        item.update(score_map.get(item["id"], empty_score_summary()))
+        item["message_alert_count"] = int(message_alert_map.get(item["id"], 0) or 0)
+        item["has_message_alert"] = item["message_alert_count"] > 0
         teams_by_course[item["course_label"]].append(item)
         ranking.append(item)
 
@@ -1662,8 +2562,28 @@ def build_public_home_context():
             return (0, int(match.group(1)), label)
         return (1, 999, label or "Sin curso")
 
+    def rank_class(position: int, total: int) -> str:
+        classes = []
+        if position == 1:
+            classes.append("rank-first")
+        elif position == 2:
+            classes.append("rank-second")
+        elif position == 3:
+            classes.append("rank-third")
+        if total >= 3 and position == total:
+            classes.append("rank-last")
+        elif total >= 3 and position == total - 1:
+            classes.append("rank-penultimate")
+        elif total >= 3 and position == total - 2:
+            classes.append("rank-antepenultimate")
+        return " ".join(classes)
+
     for course_label in sorted(teams_by_course.keys(), key=course_sort_key):
         section_teams = sorted(teams_by_course[course_label], key=lambda x: (-x["score"], x["name"].lower()))
+        total = len(section_teams)
+        for idx, team in enumerate(section_teams, start=1):
+            team["local_rank"] = idx
+            team["local_rank_class"] = rank_class(idx, total)
         course_sections.append({
             "course_label": course_label,
             "teams": section_teams,
@@ -2342,6 +3262,12 @@ def development_contract_detail(contract_id: int):
         flash("Contrato no encontrado.", "danger")
         return redirect_back("development_dashboard")
     contract = detail["contract"]
+    mark_contract_messages_as_read(user["team_id"], contract_id)
+    with get_connection() as conn:
+        contract_messages = fetch_contract_messages(conn, contract_id)
+        notifications = build_team_message_notifications(conn, user["team_id"], limit=5)
+        other_team_id = other_contract_team_id(contract, user["team_id"])
+        can_request_message = team_contract_message_permission(contract, user["team_id"]) and bool(other_team_id) and not has_open_contract_message_direction(conn, contract_id, user["team_id"], other_team_id)
     provider_track = contract["provider_service_track_resolved"] or contract["provider_service_track"]
     is_web_contract = provider_track == "web_html" and contract["target_team_site_id"]
     can_submit_delivery = contract["status"] in OPEN_CONTRACT_STATUSES and not contract["paused_by_deadline"]
@@ -2354,6 +3280,10 @@ def development_contract_detail(contract_id: int):
         can_submit_delivery=can_submit_delivery,
         can_edit_web_contract=can_edit_web_contract,
         current_contract=contract,
+        viewer_team_id=user["team_id"],
+        contract_messages=contract_messages,
+        can_request_contract_message=can_request_message,
+        team_message_notifications=notifications,
         **detail,
     )
 
@@ -2367,6 +3297,12 @@ def development_client_contract_detail(contract_id: int):
         flash("Contrato no encontrado.", "danger")
         return redirect_back("development_dashboard")
     contract = detail["contract"]
+    mark_contract_messages_as_read(user["team_id"], contract_id)
+    with get_connection() as conn:
+        contract_messages = fetch_contract_messages(conn, contract_id)
+        notifications = build_team_message_notifications(conn, user["team_id"], limit=5)
+        other_team_id = other_contract_team_id(contract, user["team_id"])
+        can_request_message = team_contract_message_permission(contract, user["team_id"]) and bool(other_team_id) and not has_open_contract_message_direction(conn, contract_id, user["team_id"], other_team_id)
     return render_template(
         "contract_workspace.html",
         viewer_role="desarrollo_team",
@@ -2375,6 +3311,10 @@ def development_client_contract_detail(contract_id: int):
         can_submit_delivery=False,
         can_edit_web_contract=False,
         current_contract=contract,
+        viewer_team_id=user["team_id"],
+        contract_messages=contract_messages,
+        can_request_contract_message=can_request_message,
+        team_message_notifications=notifications,
         **detail,
     )
 
@@ -2388,6 +3328,12 @@ def robotics_contract_detail(contract_id: int):
         flash("Contrato no encontrado.", "danger")
         return redirect(url_for("robotics_dashboard"))
     contract = detail["contract"]
+    mark_contract_messages_as_read(user["team_id"], contract_id)
+    with get_connection() as conn:
+        contract_messages = fetch_contract_messages(conn, contract_id)
+        notifications = build_team_message_notifications(conn, user["team_id"], limit=5)
+        other_team_id = other_contract_team_id(contract, user["team_id"])
+        can_request_message = team_contract_message_permission(contract, user["team_id"]) and bool(other_team_id) and not has_open_contract_message_direction(conn, contract_id, user["team_id"], other_team_id)
     return render_template(
         "contract_workspace.html",
         viewer_role="robotica_team",
@@ -2396,8 +3342,166 @@ def robotics_contract_detail(contract_id: int):
         can_submit_delivery=False,
         can_edit_web_contract=False,
         current_contract=contract,
+        viewer_team_id=user["team_id"],
+        contract_messages=contract_messages,
+        can_request_contract_message=can_request_message,
+        team_message_notifications=notifications,
         **detail,
     )
+
+
+@app.route("/contracts/<int:contract_id>/messages/request", methods=["POST"])
+@role_required("desarrollo_team", "robotica_team")
+def contract_message_request(contract_id: int):
+    user = current_user()
+    detail = fetch_contract_detail_bundle(contract_id)
+    if not detail:
+        flash("Contrato no encontrado.", "danger")
+        return redirect_back("dashboard")
+    contract = detail["contract"]
+    team_id = user["team_id"]
+    if not team_contract_message_permission(contract, team_id):
+        flash("Este contrato no admite pedidos de información en este estado.", "warning")
+        return redirect_back("dashboard")
+    recipient_team_id = other_contract_team_id(contract, team_id)
+    text_body = (request.form.get("request_text") or "").strip()
+    if not recipient_team_id or not text_body:
+        flash("Escribí el pedido de información que querés enviar.", "warning")
+        return redirect_back("dashboard")
+    if len(text_body) > 1200:
+        flash("El pedido no puede superar 1200 caracteres.", "warning")
+        return redirect_back("dashboard")
+    with get_connection() as conn:
+        if has_open_contract_message_direction(conn, contract_id, team_id, recipient_team_id):
+            flash("Ya hay una solicitud abierta en esa dirección para este contrato.", "warning")
+            return redirect_back("dashboard")
+        message_id = conn.execute(
+            """
+            INSERT INTO contract_messages (contract_id, sender_team_id, recipient_team_id, sent_by_user_id, request_text, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'pending_interventor_request', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (contract_id, team_id, recipient_team_id, user["id"], text_body),
+        ).lastrowid
+        log_action(conn, user["id"], "contract_message_request", "contract_message", message_id, f"contract={contract_id}")
+        conn.commit()
+    flash("Tu solicitud quedó enviada a interventoría para revisión.", "success")
+    return redirect_back("dashboard")
+
+
+@app.route("/contracts/<int:contract_id>/messages/<int:message_id>/respond", methods=["POST"])
+@role_required("desarrollo_team", "robotica_team")
+def contract_message_respond(contract_id: int, message_id: int):
+    user = current_user()
+    team_id = user["team_id"]
+    response_text = (request.form.get("response_text") or "").strip()
+    if not response_text:
+        flash("Escribí una respuesta antes de enviarla.", "warning")
+        return redirect_back("dashboard")
+    if len(response_text) > 1200:
+        flash("La respuesta no puede superar 1200 caracteres.", "warning")
+        return redirect_back("dashboard")
+    with get_connection() as conn:
+        message = conn.execute("SELECT * FROM contract_messages WHERE id = ? AND contract_id = ?", (message_id, contract_id)).fetchone()
+        contract = conn.execute("SELECT * FROM contracts WHERE id = ?", (contract_id,)).fetchone()
+        if not message or not contract or not team_contract_message_permission(contract, team_id):
+            flash("No se encontró esa solicitud de información.", "danger")
+            return redirect_back("dashboard")
+        if message["recipient_team_id"] != team_id or message["status"] != "delivered":
+            flash("Esa solicitud no está disponible para respuesta en este momento.", "warning")
+            return redirect_back("dashboard")
+        conn.execute(
+            """
+            UPDATE contract_messages
+            SET response_text = ?, response_by_user_id = ?, status = 'response_pending_interventor',
+                response_submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, sender_read_at = NULL
+            WHERE id = ?
+            """,
+            (response_text, user["id"], message_id),
+        )
+        log_action(conn, user["id"], "contract_message_response", "contract_message", message_id, f"contract={contract_id}")
+        conn.commit()
+    flash("Tu respuesta quedó enviada a interventoría para revisión.", "success")
+    return redirect_back("dashboard")
+
+
+@app.route("/interventor/messages/<int:message_id>/request-review", methods=["POST"])
+@role_required("interventor")
+def interventor_contract_message_request_review(message_id: int):
+    user = current_user()
+    decision = (request.form.get("decision") or "approved").strip()
+    comment = (request.form.get("comment") or "").strip()
+    with get_connection() as conn:
+        message = conn.execute("SELECT * FROM contract_messages WHERE id = ?", (message_id,)).fetchone()
+        if not message or message["status"] != "pending_interventor_request":
+            flash("La solicitud ya no está disponible para revisión.", "warning")
+            return redirect(url_for("interventor_dashboard"))
+        if decision == "approved":
+            conn.execute(
+                """
+                UPDATE contract_messages
+                SET status = 'delivered', request_interventor_user_id = ?, request_interventor_comment = ?,
+                    request_interventor_signed_at = CURRENT_TIMESTAMP, delivered_at = CURRENT_TIMESTAMP,
+                    recipient_read_at = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (user["id"], comment, message_id),
+            )
+            flash("Solicitud aprobada y enviada al equipo destinatario.", "success")
+        else:
+            conn.execute(
+                """
+                UPDATE contract_messages
+                SET status = 'rejected', request_interventor_user_id = ?, request_interventor_comment = ?,
+                    request_interventor_signed_at = CURRENT_TIMESTAMP, sender_read_at = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (user["id"], comment, message_id),
+            )
+            flash("Solicitud rechazada por interventoría.", "warning")
+        log_action(conn, user["id"], "contract_message_request_review", "contract_message", message_id, f"decision={decision}")
+        conn.commit()
+    return redirect(url_for("interventor_dashboard"))
+
+
+@app.route("/interventor/messages/<int:message_id>/response-review", methods=["POST"])
+@role_required("interventor")
+def interventor_contract_message_response_review(message_id: int):
+    user = current_user()
+    decision = (request.form.get("decision") or "approved").strip()
+    comment = (request.form.get("comment") or "").strip()
+    with get_connection() as conn:
+        message = conn.execute("SELECT * FROM contract_messages WHERE id = ?", (message_id,)).fetchone()
+        if not message or message["status"] != "response_pending_interventor":
+            flash("La respuesta ya no está disponible para revisión.", "warning")
+            return redirect(url_for("interventor_dashboard"))
+        if decision == "approved":
+            conn.execute(
+                """
+                UPDATE contract_messages
+                SET status = 'closed', response_interventor_user_id = ?, response_interventor_comment = ?,
+                    response_interventor_signed_at = CURRENT_TIMESTAMP, closed_at = CURRENT_TIMESTAMP,
+                    sender_read_at = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (user["id"], comment, message_id),
+            )
+            flash("Respuesta aprobada y cerrada correctamente.", "success")
+        else:
+            conn.execute(
+                """
+                UPDATE contract_messages
+                SET status = 'delivered', response_text = NULL, response_by_user_id = NULL,
+                    response_submitted_at = NULL, response_interventor_user_id = ?, response_interventor_comment = ?,
+                    response_interventor_signed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (user["id"], comment, message_id),
+            )
+            flash("La respuesta fue devuelta para corrección. El contrato sigue esperando una respuesta válida.", "warning")
+        log_action(conn, user["id"], "contract_message_response_review", "contract_message", message_id, f"decision={decision}")
+        conn.commit()
+    return redirect(url_for("interventor_dashboard"))
+
 
 
 @app.route("/admin/cycles/create", methods=["POST"])
@@ -2991,10 +4095,15 @@ def team_rules_page():
     team = query_one("SELECT * FROM teams WHERE id = ?", (user["team_id"],))
     role_mode = "robotica" if user["role"] == "robotica_team" else "desarrollo"
     settings = query_one("SELECT * FROM economic_settings ORDER BY effective_from DESC, id DESC LIMIT 1")
+    with get_connection() as conn:
+        active_cycle = get_active_cycle(conn)
+        team_rule_state = build_team_rule_state(conn, team, active_cycle)
     return render_template(
         "team_rules.html",
         team=team,
         role_mode=role_mode,
+        active_cycle=active_cycle,
+        team_rule_state=team_rule_state,
         contract_price=settings["contract_price"] if settings else 30,
         points_rule=build_points_rule_text(),
         points_per_panchicoin=POINTS_PER_PANCHICOIN,
@@ -3781,6 +4890,11 @@ def marketplace():
             active_cycle=active_cycle,
             service_category=requested_category or None,
         )
+        public_offer_streak = None
+        if user and user["role"] == "desarrollo_team":
+            team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
+            if team:
+                public_offer_streak = public_offer_streak_info(conn, team["id"])
     return render_template(
         "marketplace.html",
         user=user,
@@ -3791,6 +4905,7 @@ def marketplace():
         selected_service_track=requested_track,
         portfolio_service_category_options=PORTFOLIO_SERVICE_CATEGORY_OPTIONS,
         service_track_options=SERVICE_TRACK_OPTIONS,
+        public_offer_streak=public_offer_streak,
     )
 
 
@@ -3901,8 +5016,11 @@ def market_offer_detail(offer_id: int):
         team = None
         can_take = False
         team_capacity_note = None
+        public_offer_streak = None
         if user and user["role"] == "desarrollo_team":
             team = conn.execute("SELECT * FROM teams WHERE id = ?", (user["team_id"],)).fetchone()
+            if team:
+                public_offer_streak = public_offer_streak_info(conn, team['id'])
             if team_can_take_offer(team, offer) and offer["status"] == "open":
                 cycle_ok = True
                 if offer["cycle_id"]:
@@ -3920,6 +5038,8 @@ def market_offer_detail(offer_id: int):
                     team_capacity_note = "Tu equipo no está incluido en el ciclo de esta oferta."
                 elif capacity_left <= 0:
                     team_capacity_note = "Tu equipo ya alcanzó su carga activa máxima entre contratos y ofertas tomadas."
+                elif public_offer_streak and public_offer_streak['blocked']:
+                    team_capacity_note = public_offer_streak['note']
                 else:
                     can_take = True
             elif team and not team_can_take_offer(team, offer):
@@ -3931,6 +5051,7 @@ def market_offer_detail(offer_id: int):
             current_team=team,
             can_take=can_take,
             team_capacity_note=team_capacity_note,
+            public_offer_streak=public_offer_streak,
             portfolio_service_category_options=PORTFOLIO_SERVICE_CATEGORY_OPTIONS,
             service_track_options=SERVICE_TRACK_OPTIONS,
         )
@@ -3966,6 +5087,10 @@ def take_admin_offer(offer_id: int):
         if open_contracts + taken_offers >= team["max_contracts"]:
             flash("Tu equipo ya alcanzó su carga activa máxima entre contratos y ofertas tomadas.", "warning")
             return redirect(url_for("market_offer_detail", offer_id=offer_id))
+        streak_info = public_offer_streak_info(conn, team['id'])
+        if streak_info['blocked']:
+            flash(streak_info['note'], 'warning')
+            return redirect(url_for("market_offer_detail", offer_id=offer_id))
         active_cycle = get_active_cycle(conn)
         conn.execute(
             "UPDATE admin_offers SET status = 'taken', taken_by_team_id = ?, cycle_id = COALESCE(cycle_id, ?) WHERE id = ?",
@@ -3975,6 +5100,8 @@ def take_admin_offer(offer_id: int):
         conn.commit()
     flash("Oferta tomada por tu equipo. Ahora el admin puede cerrarla y pagar desde tesorería cuando corresponda.", "success")
     return redirect(url_for("development_dashboard"))
+
+
 
 
 def _robotics_score_summary(team):
@@ -4002,7 +5129,9 @@ def robotics_dashboard():
     )
     with get_connection() as conn:
         active_cycle = get_active_cycle(conn)
+        team_rule_state = build_team_rule_state(conn, team, active_cycle)
         team_gallery = fetch_team_gallery(conn, team["id"], limit=6)
+        team_message_notifications = build_team_message_notifications(conn, team["id"], limit=6)
         if active_cycle and cycle_has_team(conn, active_cycle['id'], team['id']):
             portfolios = conn.execute(
                 """
@@ -4058,8 +5187,6 @@ def robotics_dashboard():
     settings = query_one(
         "SELECT * FROM economic_settings ORDER BY effective_from DESC, id DESC LIMIT 1"
     )
-    with get_connection() as conn:
-        contract_request_web_context = build_web_request_context(conn, team, portfolio['service_track'])
     return render_template(
         "robotics_dashboard.html",
         team=team,
@@ -4076,6 +5203,9 @@ def robotics_dashboard():
         market_track_summary=market_track_summary,
         portfolio_service_category_options=PORTFOLIO_SERVICE_CATEGORY_OPTIONS,
         service_track_options=SERVICE_TRACK_OPTIONS,
+        team_message_notifications=team_message_notifications,
+        team_rule_state=team_rule_state,
+        team_score_summary=_robotics_score_summary(team),
     )
 
 
@@ -4485,9 +5615,13 @@ def development_dashboard():
         (team["id"],),
     )
     with get_connection() as conn:
+        active_cycle = get_active_cycle(conn)
+        team_rule_state = build_team_rule_state(conn, team, active_cycle)
         team_gallery = fetch_team_gallery(conn, team["id"], limit=8)
         team_site = team_site_by_team_id(conn, team["id"])
         team_score_summary = compute_team_scores(conn, [team]).get(team["id"], empty_score_summary())
+        team_message_notifications = build_team_message_notifications(conn, team["id"], limit=6)
+        public_offer_streak = team_rule_state.get("public_offer_streak") or public_offer_streak_info(conn, team["id"])
     portfolios = query_all("SELECT * FROM portfolios WHERE team_id = ? ORDER BY CASE WHEN status = 'published' THEN 0 WHEN status = 'draft' THEN 1 ELSE 2 END, updated_at DESC, id DESC", (team["id"],))
     active_portfolio = next((p for p in portfolios if p["status"] in ACTIVE_PORTFOLIO_STATUSES), None)
     contracts = query_all(
@@ -4577,6 +5711,10 @@ def development_dashboard():
         can_edit_own_team_site=team_can_edit_own_site(team),
         team_score_summary=team_score_summary,
         active_portfolio=active_portfolio,
+        team_message_notifications=team_message_notifications,
+        public_offer_streak=public_offer_streak,
+        active_cycle=active_cycle,
+        team_rule_state=team_rule_state,
     )
 
 
@@ -5128,6 +6266,178 @@ def contract_ai_help_json(contract_id: int):
     })
 
 
+
+@app.route("/historial")
+@login_required
+def cycle_history():
+    cycle_id = request.args.get("cycle_id", type=int)
+    with get_connection() as conn:
+        context = build_cycle_history_context(conn, cycle_id)
+    return render_template("cycle_history.html", **context)
+
+
+@app.route("/admin/cycles/<int:cycle_id>/closing-report")
+@role_required("admin", "interventor")
+def admin_cycle_closing_report(cycle_id: int):
+    with get_connection() as conn:
+        context = build_cycle_history_context(conn, cycle_id)
+    return render_template("cycle_history.html", **context)
+
+# Fase 8 · Panel fuerte de interventoría
+CONTRACT_STATUS_LABELS = {
+    "requested": "solicitado",
+    "pending_interventor_activation": "pendiente de activación",
+    "active": "activo",
+    "in_development": "en desarrollo",
+    "submitted_for_review": "entrega en revisión",
+    "correction_required": "corrección requerida",
+    "validated": "validado",
+    "closed": "cerrado",
+    "cancelled": "cancelado",
+}
+
+INTERVENTOR_ACTION_LABELS = {
+    "activation_review": "Revisión de activación",
+    "final_review": "Revisión final",
+    "deadline_pause": "Pausa por vencimiento",
+    "deadline_reactivate": "Reactivación por interventoría",
+    "deadline_cancel": "Cancelación por interventoría",
+    "contract_message_request_review": "Revisión de solicitud de información",
+    "contract_message_response_review": "Revisión de respuesta",
+}
+
+
+def row_value(row, key: str, default=None):
+    try:
+        value = row[key]
+    except Exception:
+        return default
+    return default if value is None else value
+
+
+def contract_status_label(status: str | None) -> str:
+    return CONTRACT_STATUS_LABELS.get(status or "", status or "—")
+
+
+def service_track_label(track: str | None) -> str:
+    return SERVICE_TRACK_OPTIONS.get(track or "", track or "—")
+
+
+def intervention_age_label(days) -> str:
+    try:
+        days_int = int(days or 0)
+    except (TypeError, ValueError):
+        days_int = 0
+    if days_int <= 0:
+        return "hoy"
+    if days_int == 1:
+        return "1 día"
+    return f"{days_int} días"
+
+
+def intervention_priority(waiting_days=0, *, paused: bool = False, kind: str = "") -> str:
+    try:
+        days_int = int(waiting_days or 0)
+    except (TypeError, ValueError):
+        days_int = 0
+    if paused:
+        return "urgent"
+    if kind in {"activation", "delivery", "message_response"} and days_int >= 2:
+        return "urgent"
+    if days_int >= 1:
+        return "warn"
+    return "normal"
+
+
+def build_interventor_task_queue(pending_activation, pending_delivery, paused_contracts, pending_message_requests, pending_message_responses):
+    """Construye una bandeja unificada sin cambiar las acciones existentes."""
+    tasks = []
+    for c in pending_activation:
+        days = row_value(c, "waiting_days", 0)
+        tasks.append({
+            "kind": "activation",
+            "priority": intervention_priority(days, kind="activation"),
+            "priority_order": 20,
+            "title": f"Activar contrato #{c['id']}",
+            "subtitle": f"{row_value(c, 'client_name', row_value(c, 'robotics_name', 'Equipo cliente'))} → {row_value(c, 'provider_name', row_value(c, 'development_name', 'Equipo proveedor'))}",
+            "meta": f"Espera {intervention_age_label(days)} · monto reservado {row_value(c, 'reserved_amount', 0)}",
+            "anchor": "activaciones",
+            "url": url_for("admin_contract_detail", contract_id=c["id"]),
+        })
+    for c in pending_delivery:
+        days = row_value(c, "waiting_days", 0)
+        bits = []
+        if row_value(c, "has_code", 0):
+            bits.append("código")
+        if row_value(c, "has_link", 0):
+            bits.append("link")
+        if row_value(c, "has_file", 0):
+            bits.append("archivo")
+        deliverable = ", ".join(bits) if bits else "sin adjunto detectado"
+        tasks.append({
+            "kind": "delivery",
+            "priority": intervention_priority(days, kind="delivery"),
+            "priority_order": 25,
+            "title": f"Revisar entrega #{row_value(c, 'delivery_id', '—')}",
+            "subtitle": f"Contrato #{c['id']} · {row_value(c, 'client_name', row_value(c, 'robotics_name', 'Cliente'))} → {row_value(c, 'provider_name', row_value(c, 'development_name', 'Proveedor'))}",
+            "meta": f"Espera {intervention_age_label(days)} · {deliverable}",
+            "anchor": "entregas",
+            "url": url_for("admin_contract_detail", contract_id=c["id"]),
+        })
+    for c in paused_contracts:
+        days = row_value(c, "waiting_days", 0)
+        tasks.append({
+            "kind": "paused",
+            "priority": "urgent",
+            "priority_order": 10,
+            "title": f"Resolver contrato pausado #{c['id']}",
+            "subtitle": f"{row_value(c, 'client_name', row_value(c, 'robotics_name', 'Cliente'))} → {row_value(c, 'provider_name', row_value(c, 'development_name', 'Proveedor'))}",
+            "meta": f"Vencido hace {intervention_age_label(days)} · fecha comprometida {row_value(c, 'requested_delivery_date', '—')}",
+            "anchor": "pausados",
+            "url": url_for("admin_contract_detail", contract_id=c["id"]),
+        })
+    for msg in pending_message_requests:
+        days = row_value(msg, "waiting_days", 0)
+        tasks.append({
+            "kind": "message_request",
+            "priority": intervention_priority(days, kind="message_request"),
+            "priority_order": 30,
+            "title": f"Aprobar solicitud de información #{msg['id']}",
+            "subtitle": f"Contrato #{msg['contract_id']} · {msg['sender_team_name']} → {msg['recipient_team_name']}",
+            "meta": f"Espera {intervention_age_label(days)}",
+            "anchor": "mensajes-solicitudes",
+            "url": url_for("admin_contract_detail", contract_id=msg["contract_id"]),
+        })
+    for msg in pending_message_responses:
+        days = row_value(msg, "waiting_days", 0)
+        tasks.append({
+            "kind": "message_response",
+            "priority": intervention_priority(days, kind="message_response"),
+            "priority_order": 28,
+            "title": f"Aprobar respuesta #{msg['id']}",
+            "subtitle": f"Contrato #{msg['contract_id']} · {msg['recipient_team_name']} respondió a {msg['sender_team_name']}",
+            "meta": f"Espera {intervention_age_label(days)}",
+            "anchor": "mensajes-respuestas",
+            "url": url_for("admin_contract_detail", contract_id=msg["contract_id"]),
+        })
+    priority_rank = {"urgent": 0, "warn": 1, "normal": 2}
+    tasks.sort(key=lambda item: (priority_rank.get(item["priority"], 3), item["priority_order"], item["title"]))
+    return tasks
+
+
+def build_interventor_dashboard_counts(pending_activation, pending_delivery, paused_contracts, pending_message_requests, pending_message_responses) -> dict:
+    return {
+        "total_tasks": len(pending_activation) + len(pending_delivery) + len(paused_contracts) + len(pending_message_requests) + len(pending_message_responses),
+        "pending_activation": len(pending_activation),
+        "pending_delivery": len(pending_delivery),
+        "paused_contracts": len(paused_contracts),
+        "pending_message_requests": len(pending_message_requests),
+        "pending_message_responses": len(pending_message_responses),
+        "pending_messages_total": len(pending_message_requests) + len(pending_message_responses),
+    }
+
+
+
 @app.route("/interventor")
 @role_required("interventor")
 def interventor_dashboard():
@@ -5137,7 +6447,8 @@ def interventor_dashboard():
             """
             SELECT c.*, rt.name AS robotics_name, dt.name AS development_name,
                    rt.name AS client_name, dt.name AS provider_name,
-                   dt.service_track AS provider_service_track
+                   dt.service_track AS provider_service_track,
+                   CAST(julianday('now', 'localtime') - julianday(COALESCE(c.created_at, 'now')) AS INTEGER) AS waiting_days
             FROM contracts c
             JOIN teams rt ON rt.id = COALESCE(c.client_team_id, c.robotics_team_id)
             JOIN teams dt ON dt.id = COALESCE(c.provider_team_id, c.development_team_id)
@@ -5154,7 +6465,8 @@ def interventor_dashboard():
                    d.original_filename, d.stored_filename, d.file_size, d.submitted_at,
                    CASE WHEN COALESCE(d.code_text, '') != '' THEN 1 ELSE 0 END AS has_code,
                    CASE WHEN COALESCE(d.repository_link, '') != '' THEN 1 ELSE 0 END AS has_link,
-                   CASE WHEN COALESCE(d.stored_filename, '') != '' THEN 1 ELSE 0 END AS has_file
+                   CASE WHEN COALESCE(d.stored_filename, '') != '' THEN 1 ELSE 0 END AS has_file,
+                   CAST(julianday('now', 'localtime') - julianday(COALESCE(d.submitted_at, c.created_at, 'now')) AS INTEGER) AS waiting_days
             FROM contracts c
             JOIN teams rt ON rt.id = COALESCE(c.client_team_id, c.robotics_team_id)
             JOIN teams dt ON dt.id = COALESCE(c.provider_team_id, c.development_team_id)
@@ -5169,7 +6481,8 @@ def interventor_dashboard():
             """
             SELECT c.*, rt.name AS robotics_name, dt.name AS development_name,
                    rt.name AS client_name, dt.name AS provider_name,
-                   dt.service_track AS provider_service_track
+                   dt.service_track AS provider_service_track,
+                   CAST(julianday('now', 'localtime') - julianday(COALESCE(c.requested_delivery_date, c.paused_at, c.created_at, 'now')) AS INTEGER) AS waiting_days
             FROM contracts c
             JOIN teams rt ON rt.id = COALESCE(c.client_team_id, c.robotics_team_id)
             JOIN teams dt ON dt.id = COALESCE(c.provider_team_id, c.development_team_id)
@@ -5177,14 +6490,118 @@ def interventor_dashboard():
             ORDER BY c.id DESC
             """
         ).fetchall()
+        if contract_messages_table_ready(conn):
+            pending_message_requests = conn.execute(
+                """
+                SELECT cm.*, c.status AS contract_status,
+                       st.name AS sender_team_name, rt.name AS recipient_team_name,
+                       su.username AS sent_by_username,
+                       CAST(julianday('now', 'localtime') - julianday(COALESCE(cm.created_at, 'now')) AS INTEGER) AS waiting_days
+                FROM contract_messages cm
+                JOIN contracts c ON c.id = cm.contract_id
+                JOIN teams st ON st.id = cm.sender_team_id
+                JOIN teams rt ON rt.id = cm.recipient_team_id
+                LEFT JOIN users su ON su.id = cm.sent_by_user_id
+                WHERE cm.status = 'pending_interventor_request'
+                ORDER BY cm.id DESC
+                """
+            ).fetchall()
+            pending_message_responses = conn.execute(
+                """
+                SELECT cm.*, c.status AS contract_status,
+                       st.name AS sender_team_name, rt.name AS recipient_team_name,
+                       ru.username AS response_by_username,
+                       CAST(julianday('now', 'localtime') - julianday(COALESCE(cm.response_submitted_at, cm.updated_at, cm.created_at, 'now')) AS INTEGER) AS waiting_days
+                FROM contract_messages cm
+                JOIN contracts c ON c.id = cm.contract_id
+                JOIN teams st ON st.id = cm.sender_team_id
+                JOIN teams rt ON rt.id = cm.recipient_team_id
+                LEFT JOIN users ru ON ru.id = cm.response_by_user_id
+                WHERE cm.status = 'response_pending_interventor'
+                ORDER BY cm.id DESC
+                """
+            ).fetchall()
+        else:
+            pending_message_requests = []
+            pending_message_responses = []
+
+        open_contract_status_rows = conn.execute(
+            """
+            SELECT status, COUNT(*) AS total
+            FROM contracts
+            WHERE status NOT IN ('closed', 'cancelled')
+            GROUP BY status
+            ORDER BY total DESC, status
+            """
+        ).fetchall()
+        team_attention_rows = conn.execute(
+            """
+            SELECT t.id, t.name, t.team_type, t.course_label, t.service_track,
+                   COUNT(DISTINCT CASE WHEN c.status NOT IN ('closed', 'cancelled') THEN c.id END) AS open_contracts,
+                   COUNT(DISTINCT CASE WHEN c.paused_by_deadline = 1 AND c.status NOT IN ('closed', 'cancelled') THEN c.id END) AS paused_contracts,
+                   COUNT(DISTINCT CASE WHEN c.status = 'submitted_for_review' THEN c.id END) AS waiting_deliveries,
+                   COALESCE(w.balance, 0) AS wallet_balance
+            FROM teams t
+            LEFT JOIN wallets w ON w.owner_type = 'team' AND w.owner_id = t.id
+            LEFT JOIN contracts c ON (
+                COALESCE(c.client_team_id, c.robotics_team_id) = t.id
+                OR COALESCE(c.provider_team_id, c.development_team_id) = t.id
+            )
+            WHERE t.active = 1
+            GROUP BY t.id, w.balance
+            HAVING open_contracts > 0 OR paused_contracts > 0 OR waiting_deliveries > 0
+            ORDER BY paused_contracts DESC, waiting_deliveries DESC, open_contracts DESC, t.name
+            LIMIT 8
+            """
+        ).fetchall()
+        recent_activity = conn.execute(
+            """
+            SELECT al.*, u.username
+            FROM audit_log al
+            LEFT JOIN users u ON u.id = al.user_id
+            WHERE al.action IN (
+                'activation_review', 'final_review', 'deadline_pause', 'deadline_reactivate', 'deadline_cancel',
+                'contract_message_request_review', 'contract_message_response_review'
+            )
+            ORDER BY al.id DESC
+            LIMIT 8
+            """
+        ).fetchall()
+
+    interventor_counts = build_interventor_dashboard_counts(
+        pending_activation,
+        pending_delivery,
+        paused_contracts,
+        pending_message_requests,
+        pending_message_responses,
+    )
+    interventor_task_queue = build_interventor_task_queue(
+        pending_activation,
+        pending_delivery,
+        paused_contracts,
+        pending_message_requests,
+        pending_message_responses,
+    )
+    urgent_task_count = len([task for task in interventor_task_queue if task["priority"] == "urgent"])
     return render_template(
         "interventor_dashboard.html",
         active_cycle=active_cycle,
         pending_activation=pending_activation,
         pending_delivery=pending_delivery,
         paused_contracts=paused_contracts,
+        pending_message_requests=pending_message_requests,
+        pending_message_responses=pending_message_responses,
+        interventor_counts=interventor_counts,
+        interventor_task_queue=interventor_task_queue,
+        urgent_task_count=urgent_task_count,
+        open_contract_status_rows=open_contract_status_rows,
+        team_attention_rows=team_attention_rows,
+        recent_activity=recent_activity,
+        contract_status_label=contract_status_label,
+        service_track_label=service_track_label,
+        intervention_age_label=intervention_age_label,
+        interventor_action_labels=INTERVENTOR_ACTION_LABELS,
     )
-
 
 @app.route("/interventor/students")
 @role_required("interventor")

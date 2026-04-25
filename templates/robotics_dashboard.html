@@ -9,6 +9,8 @@
     <a class="btn-link secondary" href="{{ url_for('team_profile_manage') }}">Editar mi equipo</a>
     <a class="btn-link" href="{{ url_for('marketplace') }}">Explorar mercado</a>
     <a class="btn-link secondary" href="{{ url_for('team_rules_page') }}">Ver reglas</a>
+    <a class="btn-link secondary" href="{{ url_for('cycle_history') }}">Historial</a>
+    {% if team_message_notifications and team_message_notifications['badge_total'] %}<span class="badge warning">Mensajes {{ team_message_notifications['badge_total'] }}</span>{% endif %}
   </div>
 </div>
 
@@ -72,6 +74,38 @@
     </div>
   </section>
 </div>
+
+{% include "_team_rule_state.html" %}
+
+<section class="card">
+  <div class="section-header compact">
+    <div>
+      <h2>Mensajes del contrato</h2>
+      <p class="muted">Acá se avisa si hay solicitudes nuevas, respuestas aprobadas o mensajes esperando interventoría.</p>
+    </div>
+    <div class="chip-row">
+      {% if team_message_notifications %}
+        <span class="badge">Por responder: {{ team_message_notifications['awaiting_response'] }}</span>
+        <span class="badge">En interventoría: {{ team_message_notifications['awaiting_interventor'] }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if team_message_notifications and team_message_notifications['recent_items'] %}
+    {% for item in team_message_notifications['recent_items'] %}
+      <article class="list-item">
+        <strong>{{ item['label'] }}</strong>
+        <div class="muted">{{ item['muted'] }}</div>
+        {% if current_user['role'] == 'robotica_team' %}
+          <a class="btn-link secondary mt-8" href="{{ url_for('robotics_contract_detail', contract_id=item['contract_id']) }}">Abrir contrato</a>
+        {% else %}
+          <a class="btn-link secondary mt-8" href="{{ url_for('development_contract_detail', contract_id=item['contract_id']) }}">Abrir contrato</a>
+        {% endif %}
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No hay avisos nuevos de mensajería contractual.</p>
+  {% endif %}
+</section>
 
 <section class="card">
   <div class="section-header">
